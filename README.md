@@ -92,8 +92,11 @@ swiftc -o /tmp/jevcheck tools/PromptCheck/main.swift Shared/*.swift && /tmp/jevc
 │   ├── JevDraft.swift     # OpenAI/Anthropic 起草
 │   └── JevPipeline.swift  # 判断 → 每话术并发起草 → 排序
 ├── App/Sources/           # SwiftUI：开始（键盘状态）/ 模型 / 话术 / 试一试
+├── App/Assets.xcassets/   # AppIcon（改设计见 tools/MakeAppIcon，别手改 PNG）
 ├── Keyboard/Sources/      # UIKit 键盘扩展（内存 <60MB 约束下的纯系统控件）
-└── tools/PromptCheck/     # 口径回归
+└── tools/
+    ├── PromptCheck/       # 口径回归
+    └── MakeAppIcon/       # 画 AppIcon：swiftc -O -o /tmp/makeappicon tools/MakeAppIcon/main.swift && /tmp/makeappicon App/Assets.xcassets/AppIcon.appiconset
 ```
 
 编译自检（不需要证书）：
@@ -117,7 +120,7 @@ xcodebuild -project JevJarvis.xcodeproj -target JevJarvis -sdk iphoneos \
 1. **感知自动化**（打通社区录屏方案的优点）：主 App 走 ScreenCaptureKit（iOS 26+ 的 `UIBackgroundModes: screen-capture`）自动读屏分析，把候选写进 App Group，键盘面板**主动展示**已就绪的候选——键盘继续当展示+填入端，感知与填入解耦
 2. 键盘内完整 QWERTY（免切换打字）
 3. 群聊适配（`@` 前缀）、知识库（Android 版的联系人档案/常驻笔记）
-4. 定时换签名 / TestFlight 分发
+4. 定时换签名 / TestFlight 分发 —— 借他人开发者账号的完整流程见 [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md)
 
 ## 许可
 

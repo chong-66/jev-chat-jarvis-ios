@@ -10,6 +10,7 @@
 		2A1CE544CB721888C80482AC /* JevDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = E468153E66BE1ACAABC3DDC3 /* JevDraft.swift */; };
 		2DDAB9F8E34B3491F95E951D /* ProvidersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58DAA46B238D923CABDE9A04 /* ProvidersView.swift */; };
 		316CD8525CFEAD5329B1D534 /* JevPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C04CB501B0AA12526FFF1A3 /* JevPrompts.swift */; };
+		5A073866199133CCBF20DF76 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8C0239472D88197A3E899EE4 /* Assets.xcassets */; };
 		5C820E4132398F7BC039CC92 /* JevDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = E468153E66BE1ACAABC3DDC3 /* JevDraft.swift */; };
 		5D6A0F45BAD570C768CD51B1 /* JevPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C04CB501B0AA12526FFF1A3 /* JevPrompts.swift */; };
 		60A21DE291B06C6785EC4F8A /* TonesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA29D4259AB9334A52ED37A /* TonesView.swift */; };
@@ -62,6 +63,7 @@
 		59C6E67F4EECF593DCFDEF93 /* JevPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevPipeline.swift; sourceTree = "<group>"; };
 		66DAB25961984A009B2F4762 /* JevJudge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevJudge.swift; sourceTree = "<group>"; };
 		7DA29D4259AB9334A52ED37A /* TonesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TonesView.swift; sourceTree = "<group>"; };
+		8C0239472D88197A3E899EE4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8C04CB501B0AA12526FFF1A3 /* JevPrompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevPrompts.swift; sourceTree = "<group>"; };
 		97932251F7F4348FE16751C5 /* JevJarvisApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevJarvisApp.swift; sourceTree = "<group>"; };
 		A14D2323AF83D9E69FDCB679 /* JevJarvis.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JevJarvis.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -115,6 +117,7 @@
 		6A65107F214C112173AE2FBC /* App */ = {
 			isa = PBXGroup;
 			children = (
+				8C0239472D88197A3E899EE4 /* Assets.xcassets */,
 				5920CD5F219BFDBDF9DE0CC8 /* Sources */,
 			);
 			path = App;
@@ -149,6 +152,7 @@
 			buildConfigurationList = AF0224F567BA00A3653438DF /* Build configuration list for PBXNativeTarget "JevJarvis" */;
 			buildPhases = (
 				92D92C2D4261000A7F2C2649 /* Sources */,
+				E088D986290D72BAE1E3F864 /* Resources */,
 				0AA9E483825BAE32052F4953 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -218,6 +222,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E088D986290D72BAE1E3F864 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A073866199133CCBF20DF76 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7171E16318E391D2D3CFD543 /* Sources */ = {
