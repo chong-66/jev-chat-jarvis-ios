@@ -69,9 +69,13 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSExtension:
+          NSExtensionAttributes:
+            IsASCIICapable: false
+            PrefersRightToLeft: false
+            PrimaryLanguage: zh-Hans
+            RequestsOpenAccess: true
           NSExtensionPointIdentifier: com.apple.keyboard-service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
-          RequestsOpenAccess: true
     entitlements:
       path: Keyboard/JevKeyboard.entitlements
       properties:
