@@ -24,6 +24,36 @@ struct RankedCandidate: Equatable {
     var prob: Double
 }
 
+/// 判断结果的内存缓存。实测判断一次要一秒多，而「换一批」是对同一条消息反复分析——
+/// 判断结论不会变，没必要每次重付一次往返。只在进程内、不落盘；换了消息自然失效。
+final class JevJudgeCache {
+    static let shared = JevJudgeCache()
+
+    private struct Key: Hashable {
+        let message: String
+        let context: String
+    }
+
+    private var store: [Key: (result: JudgeResult, at: Date)] = [:]
+    private let ttl: TimeInterval = 300
+    private let lock = NSLock()
+
+    func get(message: String, context: String?) -> JudgeResult? {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = Key(message: message, context: context ?? "")
+        guard let hit = store[key], Date().timeIntervalSince(hit.at) < ttl else { return nil }
+        return hit.result
+    }
+
+    func put(_ result: JudgeResult, message: String, context: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        if store.count > 8 { store.removeAll() }
+        store[Key(message: message, context: context ?? "")] = (result, Date())
+    }
+}
+
 final class JevJudge {
     private let base: String
     private let key: String
@@ -100,7 +130,9 @@ final class JevJudge {
 
     func rank(message: String, intent: String, candidates: [String]) async throws -> [RankedCandidate] {
         guard !candidates.isEmpty else { return [] }
-        let criteria = Dictionary(uniqueKeysWithValues: candidates.map { ($0, NSNull()) })
+        // 去重后再当选项：两个槽位选了同一个话术时，模型很可能给出两条一模一样的候选，
+        // 而字典键不能重复（用 uniqueKeysWithValues 会直接 trap 崩掉键盘）。
+        let criteria = Dictionary(candidates.map { ($0, NSNull()) }, uniquingKeysWith: { first, _ in first })
         let payload: [String: Any] = [
             "model": model,
             "state": "收到的消息：\(message)\n判断出的意图：\(intent)",
