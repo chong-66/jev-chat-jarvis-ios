@@ -189,8 +189,13 @@ final class KeyboardViewController: UIInputViewController {
                 verticalFittingPriority: .fittingSizeLevel).height
             if i < fitBlocks.count - 1 { height += 6 }
         }
-        heightConstraint.constant = min(max(height, 190), maxPanelHeight) + containerGap
+        heightConstraint.constant = min(max(height, Self.minPanelHeight), maxPanelHeight) + containerGap
     }
+
+    /// 面板高度下限。**不能低于系统键盘的最小高度**：实测请求 190pt 时，系统按自己的最小值
+    /// （约 204pt）给键盘区域，我们的视图只有 190 又被贴底，上方那 14pt 就露出系统的圆角底衬
+    /// ——看起来就是键盘顶上多了一条灰带（结果态高度够大，所以不带这个问题）。
+    private static let minPanelHeight: CGFloat = 210
 
     /// 键盘面板上方那条"灰带"的成因排查（结论：不是缝隙，量出来容器与视图**等高**）。
     /// 这段保留作兜底：万一某个 App/机型上容器真的比视图高，就把视图补到容器高度、用背景盖住。
