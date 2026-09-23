@@ -87,7 +87,9 @@ enum KB {
         return b
     }
 
-    /// 小圆角徽章：意图、话术、风险
+    /// 小圆角徽章：意图、话术、风险。
+    /// 横向必须按内容 hug——放进横向 stack 时，默认的 .fill 会把多余宽度分给
+    /// hugging 最低的那个 label，徽章就会被拉成整行宽、把正文挤没。
     static func badge(_ text: String, color: UIColor) -> UILabel {
         let l = UILabel()
         l.text = "  \(text)  "
@@ -98,6 +100,8 @@ enum KB {
         l.layer.borderColor = color.withAlphaComponent(0.5).cgColor
         l.backgroundColor = color.withAlphaComponent(0.1)
         l.clipsToBounds = true
+        l.setContentHuggingPriority(.required, for: .horizontal)
+        l.setContentCompressionResistancePriority(.required, for: .horizontal)
         l.sizeToFit()
         return l
     }
@@ -117,7 +121,7 @@ final class CandidateRow: UIControl {
         let chip = KB.badge(candidate.tone, color: KB.brand)
         chip.font = .systemFont(ofSize: 11, weight: .medium)
 
-        let text = KB.label(candidate.text, font: .systemFont(ofSize: 15), lines: 2)
+        let text = KB.label(candidate.text, font: .systemFont(ofSize: 14), lines: 2)
 
         let trailing = KB.label(
             candidate.prob.map { String(format: "%.0f%%", $0 * 100) } ?? "点按插入",
@@ -128,10 +132,10 @@ final class CandidateRow: UIControl {
 
         let hstack = UIStackView(arrangedSubviews: [chip, text, trailing])
         hstack.axis = .horizontal
-        hstack.spacing = 8
+        hstack.spacing = 6
         hstack.alignment = .center
         hstack.isLayoutMarginsRelativeArrangement = true
-        hstack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
+        hstack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8)
 
         addSubview(hstack)
         hstack.translatesAutoresizingMaskIntoConstraints = false
@@ -146,13 +150,29 @@ final class CandidateRow: UIControl {
         layer.borderWidth = 1
         layer.borderColor = KB.cardBorder.cgColor
 
-        addTarget(self, action: #selector(tapped), for: .touchUpInside)
+        // 插入走点按手势，而不是 control 的 touchUpInside：
+        // 候选行在滚动视图里，手指哪怕只挪几个点，滚动视图的 pan 就会开始识别并取消
+        // control 的触摸追踪——touchUpInside 永远不来，表现就是"点了完全没反应"。
+        // 手势识别器与 pan 并存：干净的点击由它兜住，真拖动则原样交给滚动。
+        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+
+        // 高亮仍由 control 的触摸状态驱动（取消时 up() 会兜底复原）
         addTarget(self, action: #selector(down), for: [.touchDown, .touchDragEnter])
         addTarget(self, action: #selector(up), for: [.touchDragExit, .touchCancel, .touchUpInside])
     }
 
-    @objc private func tapped() { onInsert?(candidate) }
-    @objc private func down() { backgroundColor = KB.brand.withAlphaComponent(0.15) }
+    @objc private func tapped() {
+#if DEBUG
+        JevStore.diag("候选行 tapped（手势）：话术=\(candidate.tone) 字数=\(candidate.text.count)")
+#endif
+        onInsert?(candidate)
+    }
+    @objc private func down() {
+#if DEBUG
+        JevStore.diag("候选行 touchDown")
+#endif
+        backgroundColor = KB.brand.withAlphaComponent(0.15)
+    }
     @objc private func up() { backgroundColor = KB.card }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
