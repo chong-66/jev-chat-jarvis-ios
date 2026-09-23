@@ -41,7 +41,10 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = KB.bg
+        // 面板底色交给系统，不要自己设：这个视图本身就是 UIInputView（.keyboard 样式），
+        // 系统会给它画与键盘容器同一套底材。之前用自定义的 KB.bg 盖掉了它，于是我们面板
+        // 和键盘顶部露出的那层底衬颜色对不上，看着就像多了一条"灰带"。
+        // 不设背景色后两边同源同色，深色模式也跟着系统走。
         view.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
 
         buildTopBar()
