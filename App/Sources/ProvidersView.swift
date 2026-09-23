@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 模型页：生成层（必需）+ 判断层（可选）。改完即存，键盘下次分析生效。
 struct ProvidersView: View {
@@ -189,6 +190,9 @@ private struct TestConnectionButton: View {
     }
 
     private func test() {
+        // 先把键盘收掉：不然结果被键盘挡着，也会出现"点测试反而把键盘带出来"的观感
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil)
         running = true
         result = nil
         let cfg = store.config

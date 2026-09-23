@@ -192,21 +192,25 @@ final class KeyboardViewController: UIInputViewController {
         heightConstraint.constant = min(max(height, 190), maxPanelHeight) + containerGap
     }
 
-    /// 顶部那条「色块」的成因：系统键盘容器比我们请求的视图高出一截（实测约 27pt），
-    /// 露出来的就是容器自己的圆角底衬。把视图高度补到容器高度，用我们的背景盖住它，
-    /// 同时也白得一截可用空间。只量一次——不然会和系统的布局互相追着长。
+    /// 键盘面板上方那条"灰带"的成因排查（结论：不是缝隙，量出来容器与视图**等高**）。
+    /// 这段保留作兜底：万一某个 App/机型上容器真的比视图高，就把视图补到容器高度、用背景盖住。
+    /// 关键点：**必须等 frame 铺开后再量**——刚出现时 frame 是整屏尺寸（390x844），
+    /// 拿它算会得到 0 并误标"已量过"，于是永远不再量（上一版就是这么失效的）。
     private func coverContainerGap() {
-        guard !didMeasureContainerGap, let container = view.superview,
-              container.bounds.height > 0, view.bounds.height > 0 else { return }
+        guard !didMeasureContainerGap, let container = view.superview else { return }
+        let containerHeight = container.bounds.height
+        let viewHeight = view.bounds.height
+        guard containerHeight > 0, viewHeight > 0,
+              containerHeight < 600, viewHeight < 600 else { return }  // 还没铺开，下次再看
         didMeasureContainerGap = true
-        let gap = container.bounds.height - view.bounds.height
-        guard gap > 1, gap <= 60 else { return }   // 只在合理范围内补，异常值不动
+        let gap = containerHeight - viewHeight
+        guard gap > 1, gap <= 60 else { return }
         containerGap = gap
-        lastFit = nil                               // 让 refit 带上这一截重算
+        lastFit = nil
         refit()
 #if DEBUG
         JevStore.diag(String(format: "补容器间隙 %.0fpt（容器 %.0f / 视图 %.0f）",
-                             gap, container.bounds.height, view.bounds.height))
+                             gap, containerHeight, viewHeight))
 #endif
     }
 
@@ -227,6 +231,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        coverContainerGap()               // 铺开后如果容器比视图高，就补高盖住（通常量到的是等高）
         let width = view.bounds.width
         guard width > 0, lastFit == nil || lastFit!.mode != mode || lastFit!.width != width else { return }
         lastFit = (mode, width)
