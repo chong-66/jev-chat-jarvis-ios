@@ -97,6 +97,11 @@ struct GenCredentials {
     var isBuiltin: Bool
 }
 
+/// 话术槽上限。iOS 比 macOS 少一个：手机屏幕高度有限，3 槽 × 2 条 = 最多 6 条候选
+/// 会把键盘顶到半个屏幕以上，2 槽 4 条是屏幕占用与可选性的平衡点。
+/// 存在的槽位依然保留在配置里（只是不参与），日后想放开只改这一个数。
+let MAX_SLOTS = 2
+
 /// 全部配置。存 App Group，键盘扩展与主 App 共享同一份。
 struct JevConfig: Codable, Equatable {
     // 生成层（用户没填 key 时自动回退到 JevBuiltin，见 `generation`）
@@ -119,7 +124,7 @@ struct JevConfig: Codable, Equatable {
     /// 用户自定义话术（名字 = 说明），同名覆盖内置。
     var customTones: [String: String] = [:]
 
-    var activeSlots: [String] { slots.filter { !$0.isEmpty } }
+    var activeSlots: [String] { Array(slots.filter { !$0.isEmpty }.prefix(MAX_SLOTS)) }
 
     /// 生成层实际会用的凭据：用户填了 key 就用他那一整组，一个都没填才回退到内置中转
     /// （与 macOS 版 `src/generate.py` 同序：内置永远不会盖掉用户显式配的那一组）。
@@ -201,4 +206,16 @@ enum JevStore {
         if key.count <= 8 { return String(repeating: "•", count: max(key.count - 2, 2)) + String(key.suffix(2)) }
         return String(key.prefix(4)) + "…" + String(key.suffix(4))
     }
+
+#if DEBUG
+    private static let diagKey = "jev.diag.v1"
+
+    /// 键盘侧自检日志。键盘扩展连不上 Xcode 看控制台，所以写进 App Group，
+    /// 再用 `xcrun devicectl device copy from --domain-type appGroupDataContainer` 拉出来看。
+    static func diag(_ line: String) {
+        let stamp = String(format: "%.3f", Date().timeIntervalSince1970)
+        let prev = defaults.string(forKey: diagKey) ?? ""
+        defaults.set(String((prev + "[\(stamp)] \(line)\n").suffix(6000)), forKey: diagKey)
+    }
+#endif
 }

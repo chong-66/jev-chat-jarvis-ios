@@ -11,12 +11,20 @@ final class ConfigStore: ObservableObject {
         config = JevStore.loadConfig()
     }
 
+    /// 键盘那边也能改共享配置（话术槽位就能直接在键盘上选），回到前台时把外部改动收进来——
+    /// 否则 App 里这份旧值会在下次编辑时把键盘的选择覆盖掉。
+    func reloadIfChanged() {
+        let fresh = JevStore.loadConfig()
+        if fresh != config { config = fresh }
+    }
+
     var toneCatalog: [String: String] { allTones(custom: config.customTones) }
 }
 
 @main
 struct JevJarvisApp: App {
     @StateObject private var store = ConfigStore()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -31,6 +39,9 @@ struct JevJarvisApp: App {
                     .tabItem { Label("试一试", systemImage: "flask") }
             }
             .environmentObject(store)
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { store.reloadIfChanged() }
         }
     }
 }

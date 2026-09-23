@@ -25,20 +25,20 @@ struct TonesView: View {
 
     /// 内置话术按 styles.py 的顺序展示，自定义排后面
     private func toneOrder(_ name: String) -> Int {
-        Array(BUILTIN_TONES.keys).firstIndex(of: name) ?? (BUILTIN_TONES.count + 1)
+        BUILTIN_TONE_ORDER.firstIndex(of: name) ?? (BUILTIN_TONE_ORDER.count + 1)
     }
 
     private var slotsSection: some View {
         Section {
-            ForEach(0..<3, id: \.self) { i in
+            ForEach(0..<MAX_SLOTS, id: \.self) { i in
                 Picker("槽位 \(i + 1)", selection: slotBinding(i)) {
                     ForEach(slotOptions, id: \.self) { Text($0).tag($0) }
                 }
             }
         } header: {
-            Text("槽位（每个话术每次出 2 条：前稳后放）")
+            Text("槽位（每个话术每次出 2 条）")
         } footer: {
-            Text("「\(NONE_LABEL)」= 该槽关闭。键盘上候选按槽位顺序展示，最多 3 槽 × 2 条。")
+            Text("「\(NONE_LABEL)」= 该槽关闭。键盘上候选按槽位顺序展示，最多 \(MAX_SLOTS) 槽 × 2 条。")
         }
     }
 
@@ -46,7 +46,8 @@ struct TonesView: View {
         Binding(
             get: { store.config.slots.indices.contains(i) ? store.config.slots[i] : NONE_LABEL },
             set: { newValue in
-                while store.config.slots.count < 3 { store.config.slots.append(NONE_LABEL) }
+                while store.config.slots.count < MAX_SLOTS { store.config.slots.append(NONE_LABEL) }
+                store.config.slots = Array(store.config.slots.prefix(MAX_SLOTS))  // 丢掉超额的历史槽位
                 store.config.slots[i] = newValue
             }
         )
