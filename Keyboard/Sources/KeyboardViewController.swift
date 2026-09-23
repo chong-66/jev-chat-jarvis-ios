@@ -201,8 +201,8 @@ final class KeyboardViewController: UIInputViewController {
         let vstack = UIStackView(arrangedSubviews: [guide, clipBtn, inputBtn, tonesLine])
         vstack.axis = .vertical
         vstack.spacing = 8
-        if !cfg.genKey.isEmpty {
-            // 配置正常时不占行
+        if !cfg.generation.key.isEmpty {
+            // 配置正常（含内置中转兜底）时不占行
         } else {
             let warn = KB.label("⚠️ 还没配置生成层：打开 Jev Jarvis App →「模型」页填 API Key",
                                 font: .systemFont(ofSize: 12), color: .systemOrange, lines: 0)

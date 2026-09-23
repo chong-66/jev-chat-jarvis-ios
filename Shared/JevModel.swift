@@ -16,6 +16,21 @@ enum APIKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// 随包分发的内置凭据：一个 key 都没配时用它，应用开箱就能出候选。
+/// 与 macOS 版 `src/builtin.py` 同一套值，换 token 只改这几行。
+///
+/// ⚠️ 这些值随包分发就等于公开：任何人解开 App 或翻仓库都能拿到。
+/// 所以这里放的必须是**专用 token**（模型白名单 + 额度封顶 + 过期时间），而不是主账号 key。
+/// 把 apiKey 留空 = 退回老行为：必须自己配，否则候选区只显示「还没配置生成层」。
+enum JevBuiltin {
+    static let apiKey = "sk-WwZDJLxyZSiLESeLjVTySpCiwjcNoJauuGVkWPNEpI2NyDbQ"
+    /// 自建中转（One API / New API）
+    static let baseURL = "http://101.132.131.220:11111/v1"
+    static let model = "glm-4-flash"
+    /// 关思考：glm-4-flash 忽略未知字段，Qwen3 那类不关会慢到 85 秒
+    static let extraBody = "{\"enable_thinking\": false}"
+}
+
 struct ProviderPreset: Identifiable, Hashable {
     let id: String
     let name: String
@@ -27,6 +42,9 @@ struct ProviderPreset: Identifiable, Hashable {
     /// 与 Windows 版内置预设同一批（DeepSeek 国内直连最快、智谱 glm-4-flash 免费、
     /// OpenRouter 一个 key 全模型、通义便宜、Ollama 完全本地）。
     static let all: [ProviderPreset] = [
+        .init(id: "builtin", name: "内置中转（开箱即用，免填 Key）", kind: .openai,
+              base: JevBuiltin.baseURL, model: JevBuiltin.model,
+              keyHint: "不用填：留空即走内置 token"),
         .init(id: "zhipu", name: "智谱（glm-4-flash 免费）", kind: .openai,
               base: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash", keyHint: "open.bigmodel.cn 的 API Key"),
         .init(id: "deepseek", name: "DeepSeek 官方", kind: .openai,
@@ -67,13 +85,25 @@ struct JudgePreset: Identifiable, Hashable {
     ]
 }
 
+/// 生成层实际生效的那一组。URL / key / 模型同源，不跨来源混搭——
+/// 混搭就是拿 A 家的 key 调 B 家的端点，换来一个看不懂的 401。
+struct GenCredentials {
+    var kind: APIKind
+    var base: String
+    var key: String
+    var model: String
+    var extraJSON: String
+    /// true = 这一组来自内置中转，不是用户自己配的
+    var isBuiltin: Bool
+}
+
 /// 全部配置。存 App Group，键盘扩展与主 App 共享同一份。
 struct JevConfig: Codable, Equatable {
-    // 生成层（必需）
+    // 生成层（用户没填 key 时自动回退到 JevBuiltin，见 `generation`）
     var genKind: APIKind = .openai
-    var genBase: String = "https://open.bigmodel.cn/api/paas/v4"
+    var genBase: String = JevBuiltin.baseURL
     var genKey: String = ""
-    var genModel: String = "glm-4-flash"
+    var genModel: String = JevBuiltin.model
     /// 额外请求体字段（JSON），端点要靠额外字段关思考模式时填，如 {"enable_thinking":false}
     var genExtraJSON: String = "{\"enable_thinking\": false}"
 
@@ -90,6 +120,26 @@ struct JevConfig: Codable, Equatable {
     var customTones: [String: String] = [:]
 
     var activeSlots: [String] { slots.filter { !$0.isEmpty } }
+
+    /// 生成层实际会用的凭据：用户填了 key 就用他那一整组，一个都没填才回退到内置中转
+    /// （与 macOS 版 `src/generate.py` 同序：内置永远不会盖掉用户显式配的那一组）。
+    var generation: GenCredentials {
+        if !genKey.isEmpty {
+            return GenCredentials(kind: genKind,
+                                  base: genBase.isEmpty ? JevBuiltin.baseURL : genBase,
+                                  key: genKey,
+                                  model: genModel.isEmpty ? JevBuiltin.model : genModel,
+                                  extraJSON: genExtraJSON,
+                                  isBuiltin: false)
+        }
+        guard !JevBuiltin.apiKey.isEmpty else {
+            return GenCredentials(kind: genKind, base: genBase, key: "", model: genModel,
+                                  extraJSON: genExtraJSON, isBuiltin: false)
+        }
+        return GenCredentials(kind: .openai, base: JevBuiltin.baseURL, key: JevBuiltin.apiKey,
+                              model: JevBuiltin.model, extraJSON: JevBuiltin.extraBody,
+                              isBuiltin: true)
+    }
 }
 
 /// 键盘侧回写的运行状态，主 App 的引导页用它判断「键盘装没装、全访问给没给」。

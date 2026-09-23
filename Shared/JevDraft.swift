@@ -9,12 +9,17 @@ import Foundation
 final class JevDraft {
     private let cfg: JevConfig
 
+    /// 采样温度。对齐 macOS 版 `src/generate.py` 的 0.9：内置中转和部分渠道把范围夹在 [0,1]，
+    /// 发 1.2 会被上游直接拒（400 temperature参数非法）。
+    private static let temperature: Double = 0.9
+
     init(cfg: JevConfig) {
         self.cfg = cfg
     }
 
     var isConfigured: Bool {
-        !cfg.genKey.isEmpty && !cfg.genBase.isEmpty && !cfg.genModel.isEmpty
+        let g = cfg.generation
+        return !g.key.isEmpty && !g.base.isEmpty && !g.model.isEmpty
     }
 
     // MARK: URL 拼接
@@ -55,38 +60,39 @@ final class JevDraft {
     }
 
     func call(prompt: String) async throws -> String {
-        let url = Self.chatURL(cfg.genBase, kind: cfg.genKind)
+        let g = cfg.generation
+        let url = Self.chatURL(g.base, kind: g.kind)
         var body: [String: Any]
         var headers = ["Content-Type": "application/json"]
-        switch cfg.genKind {
+        switch g.kind {
         case .openai:
             body = [
-                "model": cfg.genModel,
+                "model": g.model,
                 "messages": [["role": "user", "content": prompt]],
                 "max_tokens": 400,
-                "temperature": 1.2,
+                "temperature": Self.temperature,
                 "stream": false,
             ]
-            headers["Authorization"] = "Bearer \(cfg.genKey)"
+            headers["Authorization"] = "Bearer \(g.key)"
         case .anthropic:
             body = [
-                "model": cfg.genModel,
+                "model": g.model,
                 "max_tokens": 400,
-                "temperature": 1.2,
+                "temperature": Self.temperature,
                 "messages": [["role": "user", "content": prompt]],
             ]
-            headers["x-api-key"] = cfg.genKey
+            headers["x-api-key"] = g.key
             headers["anthropic-version"] = "2023-06-01"
         }
         // 额外字段（关思考模式等）。非法 JSON 直接忽略——不该让一个可选配置打断整条链路。
-        let extra = cfg.genExtraJSON.trimmingCharacters(in: .whitespaces)
+        let extra = g.extraJSON.trimmingCharacters(in: .whitespaces)
         if !extra.isEmpty, let data = extra.data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             for (k, v) in obj { body[k] = v }
         }
         let data = try await JevHTTP.postJSON(body, url: url, headers: headers,
                                               budget: 35, stage: "生成")
-        return try Self.extractText(data, kind: cfg.genKind, model: cfg.genModel)
+        return try Self.extractText(data, kind: g.kind, model: g.model)
     }
 
     /// 两种响应形状的正文抽取 + 「思考型模型吃光额度」识别。

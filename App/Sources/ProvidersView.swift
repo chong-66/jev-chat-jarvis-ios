@@ -54,16 +54,23 @@ struct ProvidersView: View {
 
             TestConnectionButton(kind: .generation)
 
-            Text("当前：\(store.config.genKind.rawValue) · \(store.config.genModel) · Key \(JevStore.masked(store.config.genKey))")
+            Text(genStatusLine)
                 .font(.caption2).foregroundStyle(.secondary)
         } header: {
             Text("生成层（候选回复，必配）")
         } footer: {
-            Text("别用思考型模型（思考会占满额度导致 0 条候选）。地址带不带 /v1 都能拼对；端点需要额外字段关思考时填上面那行，默认已带 enable_thinking:false。")
+            Text("不填 Key 时自动走内置中转（\(JevBuiltin.baseURL) · \(JevBuiltin.model)），填了自己的 Key 就以你的为准。别用思考型模型（思考会占满额度导致 0 条候选）。地址带不带 /v1 都能拼对；端点需要额外字段关思考时填上面那行，默认已带 enable_thinking:false。")
         }
     }
 
-    @State private var preset: String = "zhipu"
+    /// 显示实际生效的那一组，而不是输入框里的值——没填 key 时用的是内置中转。
+    private var genStatusLine: String {
+        let g = store.config.generation
+        let key = g.isBuiltin ? "内置中转（免填）" : JevStore.masked(g.key)
+        return "当前：\(g.kind.rawValue) · \(g.model) · Key \(key)"
+    }
+
+    @State private var preset: String = "builtin"
 
     private func applyPreset(_ id: String) {
         guard let p = ProviderPreset.all.first(where: { $0.id == id }), p.id != "custom" else { return }
