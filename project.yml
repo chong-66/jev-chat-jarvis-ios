@@ -1,0 +1,79 @@
+name: JevJarvis
+options:
+  bundleIdPrefix: com.jevchat
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "16.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: XZWGHPX856
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.0"
+    GENERATE_INFOPLIST_FILE: false
+
+targets:
+  JevJarvis:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jevchat.jarvis.ios
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/JevJarvis.entitlements
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Jev Jarvis
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: App/JevJarvis.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.jevchat.jarvis.ios
+    dependencies:
+      - target: JevKeyboard
+
+  JevKeyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Keyboard/Sources
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jevchat.jarvis.ios.keyboard
+        INFOPLIST_FILE: Keyboard/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Keyboard/JevKeyboard.entitlements
+        SKIP_INSTALL: true
+    info:
+      path: Keyboard/Info.plist
+      properties:
+        CFBundleDisplayName: Jev 键盘
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
+          RequestsOpenAccess: true
+    entitlements:
+      path: Keyboard/JevKeyboard.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.jevchat.jarvis.ios
