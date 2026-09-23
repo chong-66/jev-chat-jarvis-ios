@@ -148,6 +148,10 @@ private struct KeyField: View {
             }
             .buttonStyle(.plain)
         }
+        // 每次进到这个页面都回到明文：掩码只是"有人在旁边"时的临时状态，
+        // 不该留着——否则下次进来（哪怕 App 被系统恢复过）密钥还是被遮着的，
+        // 既没法核对也没法粘贴。判断层和生成层两个框共用这个组件，行为一致。
+        .onAppear { hidden = false }
     }
 }
 
