@@ -125,7 +125,8 @@ struct ProvidersView: View {
 private struct KeyField: View {
     let title: String
     @Binding var text: String
-    @State private var hidden = false
+    /// 默认闭眼（掩码）。点开只是"本次看一眼"，离开或再回来都会重新闭上。
+    @State private var hidden = true
 
     var body: some View {
         HStack(spacing: 8) {
@@ -148,10 +149,11 @@ private struct KeyField: View {
             }
             .buttonStyle(.plain)
         }
-        // 每次进到这个页面都回到明文：掩码只是"有人在旁边"时的临时状态，
-        // 不该留着——否则下次进来（哪怕 App 被系统恢复过）密钥还是被遮着的，
-        // 既没法核对也没法粘贴。判断层和生成层两个框共用这个组件，行为一致。
-        .onAppear { hidden = false }
+        // 默认闭眼：进这个页面就是掩码状态，想核对/粘贴时点一下眼睛看本次。
+        // 出现和离开都复位（TabView 切回来时 onAppear 不一定再触发，两个都挂才不漏）；
+        // 初始值也是 true，避免重建视图时先闪一下明文。
+        .onAppear { hidden = true }
+        .onDisappear { hidden = true }
     }
 }
 
