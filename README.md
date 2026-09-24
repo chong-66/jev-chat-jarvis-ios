@@ -2,20 +2,21 @@
 
 微信弹出一条消息 → 在**当前聊天 App 的键盘上**直接看到这句话的**意图、风险**和**候选回复**，点一下就进输入框。
 
-不跳 App、不切后台、不申请录屏权限——**一个自定义键盘打通所有聊天软件**（微信 / QQ / 钉钉 / iMessage / WhatsApp……），这是它和桌面版「悬浮窗 + 抓屏」路线的根本区别，也是「全站」能力的地基。
+不跳 App、不切后台、不申请录屏权限——**一个自定义键盘打通所有聊天软件**（微信 / QQ / 钉钉 / iMessage / WhatsApp……），任何输入框都能用。
 
-## 与其他版本的路线差异
+![键盘实际演示：长按复制对方消息 → 键盘上出意图/风险/候选 → 点按插入输入框](docs/demo.mp4)
 
-| | macOS / Windows | Android | 社区 iOS 录屏版（PR #24） | **本仓库（键盘版）** |
-|---|---|---|---|---|
-| 感知消息 | 抓窗口 + OCR | 无障碍树 | 录屏 + 视觉模型（4~15s） | **用户长按消息 → 复制**（剪贴板） |
-| 展示候选 | 悬浮窗 | 悬浮窗 | 通知横幅 | **键盘面板**（就在输入框上方） |
-| 填入回复 | 辅助功能/粘贴 | ACTION_SET_TEXT | 复制进剪贴板，自己切回去粘贴 | **insertText 直插输入框** |
-| 每条消息操作 | 0 点击（全自动） | 0~1 点击 | 3+ 点击且要切 App | **4 点击且零切换** |
-| App 适配 | 仅微信，布局常量易失效 | 每 App 一个适配器 | 仅验过微信 | **零适配，任何 App 通用** |
-| 权限 | 录屏 + 辅助功能 | 无障碍 + 悬浮窗 | 录屏（每次启动重新授权） | **仅「允许完全访问」一次** |
+## 反馈与帮助
 
-键盘版的取舍是诚实版：iOS 没有无障碍树、没有跨 App 悬浮窗、录屏授权不能持久，全自动感知在这条路上代价太高（社区实测端到端 8.7~16.5 秒）。键盘方案用「长按 → 复制」一步手动换来了**快（2~5 秒出全链结果）、稳（不依赖微信布局）、全站（任何输入框都能用）**。
+**合作、反馈、进群，请公众号私信**：
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/wechat-mp-qr.png" width="200" alt="扫码关注公众号"><br><sub>公众号</sub></td>
+  </tr>
+</table>
+
+交流群群码见文末[「交流反馈」](#交流反馈)。
 
 ## 用法
 
@@ -57,22 +58,10 @@
 - 聊天内容只在点「分析」那一刻发往**你自己配置**的模型接口；无自建服务器、不落盘、不进日志
 - API Key 存本机 App Group 私有容器，仅 App 与键盘可读
 - 键盘不监听、不上传按键；「允许完全访问」随时可在系统设置里关闭或移除键盘
-- 意图集 / 风险量表 / 话术库 / 起草 prompt 与 macOS、Windows、Android 版**同一口径**（见下）
 
-## 三端一致性
+## 口径回归
 
-`Shared/` 目录是从 macOS 版逐字移植的单一来源：
-
-| 口径 | 来源 | iOS 对应 |
-|---|---|---|
-| 8 类意图 | `src/judge.py INTENTS` | `JevPrompts.swift INTENTS` |
-| 风险量表 0-9 | `src/judge.py RISK_LEVELS` | `JevPrompts.swift RISK_LEVELS` |
-| 行动建议 | `src/judge.py ACTION_MAP` | `JevPrompts.swift ACTION_MAP` |
-| 10 种话术 | `src/styles.py BUILTIN` | `JevPrompts.swift BUILTIN_TONES` |
-| 起草 prompt | `src/generate.py PROMPT_ONE` | `JevPrompts.swift PROMPT_ONE` |
-| 候选清洗 | `src/generate.py _parse` | `CandidateParser`（同顺序：编号→引号→风格前缀→引号） |
-| Jev URL 拼接 | `src/generate.py #42 单一规则` | `JevJudge.requestURL` |
-| 阶段预算 | 社区 iOS 版真机教训 | `JevHTTP.postJSON`（重试与超时不再相乘） |
+`Shared/` 目录是 App 与键盘共用的单一口径层：意图集、风险量表、行动建议、话术库、起草 prompt、候选清洗和 URL 拼接规则都只在这一份实现里，两端行为永远一致。
 
 口径回归（Mac 上直接跑，不需要 iPhone）：
 
@@ -117,11 +106,30 @@ xcodebuild -project JevJarvis.xcodeproj -target JevJarvis -sdk iphoneos \
 
 ## 路线图
 
-1. **感知自动化**（打通社区录屏方案的优点）：主 App 走 ScreenCaptureKit（iOS 26+ 的 `UIBackgroundModes: screen-capture`）自动读屏分析，把候选写进 App Group，键盘面板**主动展示**已就绪的候选——键盘继续当展示+填入端，感知与填入解耦
+1. **感知自动化**：主 App 走 ScreenCaptureKit（iOS 26+ 的 `UIBackgroundModes: screen-capture`）自动读屏分析，把候选写进 App Group，键盘面板**主动展示**已就绪的候选——键盘继续当展示+填入端，感知与填入解耦
 2. 键盘内完整 QWERTY（免切换打字）
-3. 群聊适配（`@` 前缀）、知识库（Android 版的联系人档案/常驻笔记）
+3. 群聊适配（`@` 前缀）、知识库（联系人档案/常驻笔记）
 4. 定时换签名 / TestFlight 分发 —— 借他人开发者账号的完整流程见 [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md)
 
 ## 许可
 
 MIT。候选只插入输入框，**永不自动发送**；只读你自己账号里你自己看到的内容。
+
+## 交流反馈
+
+也可扫码进交流群（1、2 群已满，从 3 群开始扫，满了顺序换下一个）；合作、反馈、进群也都可以公众号私信（二维码见顶部「反馈与帮助」）：
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/wechat-group-2.png" width="200" alt="扫码加入微信交流群 2 群"><br><sub>2 群</sub></td>
+    <td align="center"><img src="docs/wechat-group-3.png" width="200" alt="扫码加入微信交流群 3 群"><br><sub>3 群</sub></td>
+    <td align="center"><img src="docs/wechat-group-4.png" width="200" alt="扫码加入微信交流群 4 群"><br><sub>4 群</sub></td>
+    <td align="center"><img src="docs/wechat-group-5.png" width="200" alt="扫码加入微信交流群 5 群"><br><sub>5 群</sub></td>
+  </tr>
+</table>
+
+## ☕ 请我喝杯咖啡
+
+如果你觉得我写的这玩意儿对你有点帮助，欢迎请我喝杯咖啡。咖啡因一到位，脑子就开始冒泡，源源不断地驱动我往前跑；哪天我更新得特别勤，说明这杯续上了 😄
+
+<p align="center"><img src="docs/sponsor-qr.png" width="260" alt="微信赞赏码"></p>
