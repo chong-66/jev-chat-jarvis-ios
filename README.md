@@ -116,11 +116,11 @@ xcodebuild -project JevJarvis.xcodeproj -target JevJarvis -sdk iphoneos \
 
 ## 许可
 
-Copyright © 2026 eatmoreduck 与项目贡献者。代码以 [MIT](LICENSE) 协议开源，另见 [NOTICE](NOTICE)。
+Copyright © 2026 eatmoreduck 与 jev-chat 贡献者。代码以 [MIT](LICENSE) 协议开源，另见 [NOTICE](NOTICE)。
 
 - **可以商用**：个人和公司都可以使用、修改、再分发，不需要付费或事先授权。
 - **必须注明出处**：分发或商用时保留 `LICENSE` 与 `NOTICE`，并写明来源。
-- **不要用**「jev-jarvis-ios」名称暗示由原作者出品或背书。
+- **不要用**「秒回」「Jev 聊天助手」「jev-chat」「jev-jarvis-ios」名称暗示由原作者出品或背书。
 - **仅供正当用途**：本项目只辅助你自己真诚的日常沟通。严禁用于任何违法违规行为，**包括但不限于任何形式的诈骗（杀猪盘、养老诈骗、婚恋诈骗）、冒充他人、骚扰、垃圾营销**。
 - **免责声明**：本项目按「现状」提供，作者不参与、不知情、也不为任何使用者的具体使用行为负责，由此产生的一切后果与法律责任由使用者自行承担。本项目只处理你自己设备上、你自己有权查看的聊天，候选只插入输入框，**永不自动发送**。
 - 完整风险告知见置顶 issue：[使用声明与风险告知](https://github.com/jev-chat/jev-chat-jarvis-ios/issues/2)。
