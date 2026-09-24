@@ -4,7 +4,12 @@
 
 不跳 App、不切后台、不申请录屏权限——**一个自定义键盘打通所有聊天软件**（微信 / QQ / 钉钉 / iMessage / WhatsApp……），任何输入框都能用。
 
-![键盘实际演示：长按复制对方消息 → 键盘上出意图/风险/候选 → 点按插入输入框](docs/demo.gif)
+<table>
+  <tr>
+    <td valign="middle"><img src="docs/demo.gif" alt="键盘实际演示：长按复制对方消息 → 键盘上出意图/风险/候选 → 点按插入输入框" width="320"></td>
+    <td valign="middle"><img src="docs/setup.gif" alt="App 设置演示：键盘状态自检、三步启用、内置话术库" width="320"></td>
+  </tr>
+</table>
 
 ## 反馈与帮助
 
