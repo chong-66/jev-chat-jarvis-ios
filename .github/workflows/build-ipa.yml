@@ -1,0 +1,113 @@
+name: Build iPhone IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare build tools
+        run: |
+          xcodebuild -version
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+
+      - name: Remove bundled API credential from this build
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('Shared/JevModel.swift')
+          source = path.read_text(encoding='utf-8')
+          source, count = re.subn(
+              r'(enum JevBuiltin\s*\{\s*static let apiKey\s*=\s*)"[^"\n]*"',
+              r'\1""', source, count=1)
+          if count != 1:
+              raise SystemExit('Builtin credential layout changed; review before building.')
+          path.write_text(source, encoding='utf-8')
+          PY
+
+      - name: Generate Xcode project and run existing checks
+        run: |
+          xcodegen generate
+          swiftc -o "$RUNNER_TEMP/jevcheck" tools/PromptCheck/main.swift Shared/*.swift
+          "$RUNNER_TEMP/jevcheck"
+
+      - name: Build app and keyboard without Apple signing
+        run: |
+          xcodebuild \
+            -project JevJarvis.xcodeproj \
+            -scheme JevJarvis \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/JevJarvis.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM= \
+            archive
+
+      - name: Package IPA for local re-signing
+        run: |
+          app="$RUNNER_TEMP/JevJarvis.xcarchive/Products/Applications/JevJarvis.app"
+          keyboard="$app/PlugIns/JevKeyboard.appex"
+          test -d "$app"
+          test -d "$keyboard"
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:PrimaryLanguage' "$keyboard/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:RequestsOpenAccess' "$keyboard/Info.plist")" = true
+
+          # Preserve the requested App Groups in a local ad-hoc signature so
+          # re-signing tools can inspect them. This is NOT an Apple-issued
+          # device signature or an Ad Hoc distribution provisioning profile.
+          codesign --force --sign - --entitlements Keyboard/JevKeyboard.entitlements "$keyboard"
+          codesign --force --sign - --entitlements App/JevJarvis.entitlements "$app"
+          codesign --verify --deep --strict "$app"
+
+          mkdir -p "$RUNNER_TEMP/jev-package/Payload" dist
+          ditto "$app" "$RUNNER_TEMP/jev-package/Payload/JevJarvis.app"
+          ditto -c -k --keepParent "$RUNNER_TEMP/jev-package/Payload" dist/JevJarvis-resign.ipa
+          cp LICENSE NOTICE dist/
+          cat > dist/INSTALL.txt <<'EOF'
+          This IPA needs Apple-account re-signing before it can run on iPhone.
+          It is not a TestFlight build and cannot be installed by tapping it.
+          Use a compatible Windows signing tool such as Sideloadly.
+          Keep the JevKeyboard extension. Do not remove PlugIns.
+          App Groups must survive re-signing and match the app's shared group.
+          A successful IPA build does not prove that shared settings will work.
+          Free Apple-account provisioning expires after 7 days; refresh it.
+          Configure your own model API key in the app after installation.
+          The upstream bundled API credential is removed from this build.
+          Include LICENSE and NOTICE when redistributing this package.
+          EOF
+
+      - name: Upload downloadable package
+        uses: actions/upload-artifact@v7
+        with:
+          name: JevJarvis-for-resigning
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Explain next step
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## 构建完成，仍需在 Windows 上签名安装
+          下载 **JevJarvis-for-resigning**，解压后取出 `JevJarvis-resign.ipa`。
+          包含主 App 和 JevKeyboard 扩展；签名工具中必须保留键盘扩展。
+          此包不能直接点开安装，也不能直接上传 TestFlight。
+          免费账号需每 7 天续签；App Groups 共享配置仍需安装后验证。
+          此构建清除了原项目的内置 API Key，安装后请自行配置模型接口。
+          EOF
