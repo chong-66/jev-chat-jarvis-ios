@@ -35,18 +35,25 @@ struct SetupView: View {
                 ok: kbStatus != nil && Date().timeIntervalSince(kbStatus!.lastSeen) < 90,
                 detail: kbStatus.map {
                     "最近使用：\(timeAgo($0.lastSeen))"
-                } ?? "还没检测到键盘被唤起过（在任意输入框里切换到 Jev 键盘即可）")
+                } ?? "尚未收到键盘状态：请切换到 Jev 键盘；若已用过，请检查共享配置")
 
             row(icon: "lock.open", title: "允许完全访问",
                 ok: kbStatus?.hasFullAccess == true,
-                detail: kbStatus?.hasFullAccess == true
+                detail: kbStatus == nil
+                    ? "尚未收到键盘状态，无法判断；请以系统设置中的开关为准"
+                    : kbStatus?.hasFullAccess == true
                     ? "已开启：键盘可以联网、读剪贴板"
                     : "未开启：键盘无法联网和读剪贴板，也不会出候选")
 
             row(icon: "externaldrive.connected.to.line.below", title: "App Group 共享",
-                ok: groupOK, detail: groupOK
-                    ? "配置可以同步到键盘"
-                    : "共享容器不可用：请确认用 Xcode 把 App 和键盘扩展签在同一个 Team 下")
+                ok: groupOK && kbStatus?.generationConfigured == true,
+                detail: !groupOK
+                    ? "共享容器不可用：签名需为 App 和键盘授权同一共享组，且代码读取的组名必须匹配"
+                    : kbStatus == nil
+                        ? "共享容器可用，等待键盘回写确认；请先切换到 Jev 键盘"
+                        : kbStatus?.generationConfigured == true
+                            ? "已收到键盘回写：键盘已读取生成层配置"
+                            : "已收到键盘回写，但尚未确认生成层配置；请检查「模型」页并重新切换键盘")
         } header: {
             Text("状态")
         } footer: {

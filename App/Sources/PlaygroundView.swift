@@ -28,7 +28,7 @@ struct PlaygroundView: View {
                 } header: {
                     Text("要回的消息")
                 } footer: {
-                    Text("和键盘走同一条链路：判断 → 每话术起草 → 排序。这里能通，键盘上就能通。")
+                    Text("这里验证主 App 的模型连接。聊天键盘还需要完全访问和共享配置，请到「开始」页确认键盘回写状态。")
                 }
 
                 if let a = analysis {
