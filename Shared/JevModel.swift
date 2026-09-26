@@ -23,7 +23,7 @@ enum APIKind: String, Codable, CaseIterable, Identifiable {
 /// 所以这里放的必须是**专用 token**（模型白名单 + 额度封顶 + 过期时间），而不是主账号 key。
 /// 把 apiKey 留空 = 退回老行为：必须自己配，否则候选区只显示「还没配置生成层」。
 enum JevBuiltin {
-    static let apiKey = "sk-WwZDJLxyZSiLESeLjVTySpCiwjcNoJauuGVkWPNEpI2NyDbQ"
+    static let apiKey = ""
     /// 自建中转（One API / New API）
     static let baseURL = "http://101.132.131.220:11111/v1"
     static let model = "glm-4-flash"
@@ -151,6 +151,7 @@ struct JevConfig: Codable, Equatable {
 struct KeyboardStatus: Codable, Equatable {
     var lastSeen: Date
     var hasFullAccess: Bool
+    var generationConfigured: Bool? = nil
 }
 
 // MARK: - App Group 存储
@@ -158,45 +159,69 @@ struct KeyboardStatus: Codable, Equatable {
 /// 配置与状态的唯一存放点。键值放 App Group UserDefaults：
 /// 键盘扩展只有拿到「允许完全访问」后才能读共享容器，正好与联网条件一致。
 enum JevStore {
-    static let appGroupID = "group.com.jevchat.jarvis.ios"
+    static let appGroupID = JevSharedGroup.originalID
     private static let configKey = "jev.config.v1"
     private static let statusKey = "jev.kbstatus.v1"
-    private static let canaryKey = "jev.canary.v1"
+
+    private static var isKeyboard: Bool { Bundle.main.bundleURL.pathExtension == "appex" }
+
+    static var resolvedAppGroupID: String? {
+        JevSharedGroup.resolve(
+            JevSharedGroup.candidates(bundleID: Bundle.main.bundleIdentifier, isKeyboard: isKeyboard)
+        ) { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) != nil }
+    }
+
+    private static var sharedDefaults: UserDefaults? {
+        guard let id = resolvedAppGroupID else { return nil }
+        return UserDefaults(suiteName: id)
+    }
 
     static var defaults: UserDefaults {
-        UserDefaults(suiteName: appGroupID) ?? .standard
+        sharedDefaults ?? .standard
     }
 
-    /// App Group 容器是否真的可写可读（签名没带上 entitlement 时 suite 会静默退化为私有容器）。
-    static var groupWritable: Bool {
-        let stamp = "t\(Date().timeIntervalSince1970)"
-        defaults.set(stamp, forKey: canaryKey)
-        return defaults.string(forKey: canaryKey) == stamp
-    }
+    /// 容器可用只证明当前进程有权限；跨进程共享还需收到键盘回写。
+    static var groupWritable: Bool { sharedDefaults != nil }
 
     static func loadConfig() -> JevConfig {
-        guard let data = defaults.data(forKey: configKey),
-              let cfg = try? JSONDecoder().decode(JevConfig.self, from: data) else {
-            return JevConfig()
+        loadConfig(shared: sharedDefaults, local: .standard,
+                   legacy: isKeyboard ? nil : UserDefaults(suiteName: appGroupID),
+                   isKeyboard: isKeyboard)
+    }
+
+    /// Only the host migrates old private preferences. The keyboard must never
+    /// seed the shared store with its own empty/default configuration.
+    static func loadConfig(shared: UserDefaults?, local: UserDefaults,
+                           legacy: UserDefaults?, isKeyboard: Bool) -> JevConfig {
+        func decode(_ source: UserDefaults?) -> JevConfig? {
+            guard let data = source?.data(forKey: configKey) else { return nil }
+            return try? JSONDecoder().decode(JevConfig.self, from: data)
+        }
+        if let cfg = decode(shared) { return cfg }
+        guard !isKeyboard, let cfg = decode(local) ?? decode(legacy) else { return JevConfig() }
+        if let data = try? JSONEncoder().encode(cfg) {
+            shared?.set(data, forKey: configKey)
+            local.set(data, forKey: configKey)
         }
         return cfg
     }
 
     static func saveConfig(_ cfg: JevConfig) {
         if let data = try? JSONEncoder().encode(cfg) {
-            defaults.set(data, forKey: configKey)
+            sharedDefaults?.set(data, forKey: configKey)
+            if !isKeyboard { UserDefaults.standard.set(data, forKey: configKey) }
         }
     }
 
     static func loadKeyboardStatus() -> KeyboardStatus? {
-        guard let data = defaults.data(forKey: statusKey),
+        guard let data = sharedDefaults?.data(forKey: statusKey),
               let s = try? JSONDecoder().decode(KeyboardStatus.self, from: data) else { return nil }
         return s
     }
 
     static func saveKeyboardStatus(_ s: KeyboardStatus) {
         if let data = try? JSONEncoder().encode(s) {
-            defaults.set(data, forKey: statusKey)
+            sharedDefaults?.set(data, forKey: statusKey)
         }
     }
 

@@ -73,12 +73,20 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         // 回写状态：主 App「开始」页据此显示键盘是否已启用、是否给了完全访问
-        JevStore.saveKeyboardStatus(KeyboardStatus(lastSeen: Date(), hasFullAccess: hasFullAccess))
+        reportConfigurationStatus()
+        if !hasFullAccess { setMode(.gate) }
+        else if mode == .gate || mode == .idle { setMode(.idle) }
         prewarm()
         // 刚出现时 frame 还没定，等键盘铺开后再量容器间隙
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             self?.coverContainerGap()
         }
+    }
+
+    private func reportConfigurationStatus() {
+        JevStore.saveKeyboardStatus(KeyboardStatus(
+            lastSeen: Date(), hasFullAccess: hasFullAccess,
+            generationConfigured: !JevStore.loadConfig().generation.key.isEmpty))
     }
 
     /// 预热生成层连接。实测同一条起草请求，第二次能从 ~1.9 秒降到 ~0.5 秒——
@@ -386,7 +394,10 @@ final class KeyboardViewController: UIInputViewController {
         if !cfg.generation.key.isEmpty {
             // 配置正常（含内置中转兜底）时不占行
         } else {
-            let warn = KB.label("⚠️ 还没配置生成层：打开 Jev Jarvis App →「模型」页填 API Key",
+            let message = JevStore.groupWritable
+                ? "⚠️ 还没配置生成层：打开 Jev Jarvis App →「模型」页填 API Key"
+                : "⚠️ 共享配置不可用：请安装支持当前签名的版本，主 App 的 Key 无法同步到键盘"
+            let warn = KB.label(message,
                                 font: .systemFont(ofSize: 12), color: .systemOrange, lines: 0)
             vstack.addArrangedSubview(warn)
         }
@@ -708,6 +719,13 @@ final class KeyboardViewController: UIInputViewController {
     @objc private func backToIdle() { setMode(.idle) }
 
     private func run(message: String) {
+        guard hasFullAccess else { setMode(.gate); return }
+        guard JevStore.groupWritable else {
+            errorText = "键盘无法访问共享配置。请确认 App 和键盘使用同一 Team、同一 App Group，并使用适配重签组名的版本。"
+            setMode(.error)
+            return
+        }
+        reportConfigurationStatus()
         lastMessage = message
         setMode(.loading)
         stageLabel.text = "判断中…"
