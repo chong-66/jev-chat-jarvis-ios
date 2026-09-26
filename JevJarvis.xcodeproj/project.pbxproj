@@ -28,6 +28,8 @@
 		D67E6C3EB4A3681763813A68 /* JevKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1D974B863D36BEC90B7AD48 /* JevKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E4BE80B596BE426D51ABA6AB /* JevJudge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66DAB25961984A009B2F4762 /* JevJudge.swift */; };
 		F75AF192F6299A272F3298BD /* JevHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01311D68AC2C69F77E0DC7C7 /* JevHTTP.swift */; };
+		F11000000000000000000002 /* JevSharedGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11000000000000000000001 /* JevSharedGroup.swift */; };
+		F11000000000000000000003 /* JevSharedGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11000000000000000000001 /* JevSharedGroup.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +73,7 @@
 		E468153E66BE1ACAABC3DDC3 /* JevDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevDraft.swift; sourceTree = "<group>"; };
 		E845E71C6394DFDAAD38B7EA /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		FC5E8120955C443F40DBBC94 /* JevModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevModel.swift; sourceTree = "<group>"; };
+		F11000000000000000000001 /* JevSharedGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevSharedGroup.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -130,6 +133,7 @@
 				01311D68AC2C69F77E0DC7C7 /* JevHTTP.swift */,
 				66DAB25961984A009B2F4762 /* JevJudge.swift */,
 				FC5E8120955C443F40DBBC94 /* JevModel.swift */,
+				F11000000000000000000001 /* JevSharedGroup.swift */,
 				59C6E67F4EECF593DCFDEF93 /* JevPipeline.swift */,
 				8C04CB501B0AA12526FFF1A3 /* JevPrompts.swift */,
 			);
@@ -243,6 +247,7 @@
 				A6CD614DDD9E46C6B8163F80 /* JevHTTP.swift in Sources */,
 				E4BE80B596BE426D51ABA6AB /* JevJudge.swift in Sources */,
 				96FFC7E9CFEDCDEA0BBDB029 /* JevModel.swift in Sources */,
+				F11000000000000000000002 /* JevSharedGroup.swift in Sources */,
 				CF0A96BCA766F517CAB28CDD /* JevPipeline.swift in Sources */,
 				316CD8525CFEAD5329B1D534 /* JevPrompts.swift in Sources */,
 				CF3E23ACADEF845E5220996A /* KeyboardViewController.swift in Sources */,
@@ -259,6 +264,7 @@
 				BBBE5FA11BC822A74CEC431E /* JevJarvisApp.swift in Sources */,
 				A135CC6B64654766B5183A7C /* JevJudge.swift in Sources */,
 				6CDFA8F322ED6E2C5A2C458F /* JevModel.swift in Sources */,
+				F11000000000000000000003 /* JevSharedGroup.swift in Sources */,
 				75BF9371D4A495708E65AA91 /* JevPipeline.swift in Sources */,
 				5D6A0F45BAD570C768CD51B1 /* JevPrompts.swift in Sources */,
 				BBD83E88D595AAF9DE5D3909 /* PlaygroundView.swift in Sources */,
