@@ -121,59 +121,5 @@ let oldStatusData = Data("{\"lastSeen\":0,\"hasFullAccess\":true}".utf8)
 let oldStatus = try! JSONDecoder().decode(KeyboardStatus.self, from: oldStatusData)
 check("状态·旧版回写不能冒充已读配置", "\(oldStatus.generationConfigured == nil)", "true")
 
-// MARK: 重签后的共享组与配置迁移
-
-let hostID = "com.jevchat.jarvis.ios.TESTTEAM01"
-let signedGroup = "group." + hostID
-let hostGroups = JevSharedGroup.candidates(bundleID: hostID, isKeyboard: false)
-let keyboardGroups = JevSharedGroup.candidates(bundleID: hostID + ".keyboard", isKeyboard: true)
-check("共享·重签 App 与键盘组名一致", hostGroups.joined(separator: ","), keyboardGroups.joined(separator: ","))
-check("共享·优先重签组", hostGroups.first ?? "nil", signedGroup)
-check("共享·原版不重复候选", "\(JevSharedGroup.candidates(bundleID: "com.jevchat.jarvis.ios", isKeyboard: false).count)", "1")
-check("共享·无 bundle ID", JevSharedGroup.candidates(bundleID: nil, isKeyboard: false).first!, JevSharedGroup.originalID)
-check("共享·拒绝猜测未知扩展后缀", JevSharedGroup.candidates(bundleID: hostID + ".unknown", isKeyboard: true).joined(), JevSharedGroup.originalID)
-check("共享·两组都有权限时选择重签组", JevSharedGroup.resolve(hostGroups) { _ in true } ?? "nil", signedGroup)
-check("共享·原组仍可用时回退", JevSharedGroup.resolve(hostGroups) { $0 == JevSharedGroup.originalID } ?? "nil", JevSharedGroup.originalID)
-check("共享·无权限不能假报可用", JevSharedGroup.resolve(hostGroups) { _ in false } ?? "nil", "nil")
-
-// Isolated stores model the previous private suite, host backup, and new group.
-// Never use real credentials or the user's preference domains in these checks.
-let testPrefix = "jev.tests." + UUID().uuidString
-let domainNames = ["shared", "local", "legacy"].map { testPrefix + "." + $0 }
-let testStores = domainNames.map { UserDefaults(suiteName: $0)! }
-let sharedStore = testStores[0], localStore = testStores[1], legacyStore = testStores[2]
-func resetStores() {
-    for (index, name) in domainNames.enumerated() { testStores[index].removePersistentDomain(forName: name) }
-}
-var legacyConfig = JevConfig()
-legacyConfig.genKey = "test-only-placeholder"
-legacyConfig.genModel = "test-model"
-legacyConfig.slots = ["测试话术"]
-let encodedLegacy = try! JSONEncoder().encode(legacyConfig)
-legacyStore.set(encodedLegacy, forKey: "jev.config.v1")
-let migrated = JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: legacyStore, isKeyboard: false)
-check("迁移·保留旧配置", "\(migrated == legacyConfig)", "true")
-check("迁移·写入共享区", "\(sharedStore.data(forKey: "jev.config.v1") != nil)", "true")
-check("迁移·键盘读到迁移配置", "\(JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: nil, isKeyboard: true) == legacyConfig)", "true")
-var currentConfig = legacyConfig
-currentConfig.genModel = "new-model"
-sharedStore.set(try! JSONEncoder().encode(currentConfig), forKey: "jev.config.v1")
-check("迁移·旧备份不能覆盖现有共享配置", JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: legacyStore, isKeyboard: false).genModel, "new-model")
-resetStores()
-legacyStore.set(encodedLegacy, forKey: "jev.config.v1")
-localStore.set(encodedLegacy, forKey: "jev.config.v1")
-_ = JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: legacyStore, isKeyboard: true)
-check("迁移·键盘不能向空共享区写入本地数据", "\(sharedStore.data(forKey: "jev.config.v1") == nil)", "true")
-check("迁移·共享不可用时主 App 保留配置", "\(JevStore.loadConfig(shared: nil, local: localStore, legacy: legacyStore, isKeyboard: false) == legacyConfig)", "true")
-check("迁移·键盘不可误用私有配置", "\(JevStore.loadConfig(shared: nil, local: localStore, legacy: legacyStore, isKeyboard: true) == JevConfig())", "true")
-resetStores()
-sharedStore.set(Data("not-json".utf8), forKey: "jev.config.v1")
-legacyStore.set(encodedLegacy, forKey: "jev.config.v1")
-check("迁移·损坏共享配置可从主 App 恢复", "\(JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: legacyStore, isKeyboard: false) == legacyConfig)", "true")
-resetStores()
-let oldStatusData = Data("{\"lastSeen\":0,\"hasFullAccess\":true}".utf8)
-let oldStatus = try! JSONDecoder().decode(KeyboardStatus.self, from: oldStatusData)
-check("状态·旧版回写不能冒充已读配置", "\(oldStatus.generationConfigured == nil)", "true")
-
 print("\n\(pass) passed, \(fail) failed")
 exit(fail == 0 ? 0 : 1)
