@@ -22,6 +22,7 @@ final class KeyboardViewController: UIInputViewController {
     private var generationTask: Task<Void, Never>?
     private var requestGate = JevRequestGate()
     private var replyContext = JevReplyContext()
+    private var contextDraftStore = JevContextDraftStore()
     private var contextSpeaker = JevReplyContext.Speaker.other
     private var contextError = ""
     private var lastContext: String?
@@ -62,6 +63,7 @@ final class KeyboardViewController: UIInputViewController {
         // 不设背景色后两边同源同色，深色模式也跟着系统走。
         view.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
 
+        restoreContextDraft()
         buildTopBar()
         buildContentStack()
         mode = hasFullAccess ? .idle : .gate
@@ -87,11 +89,13 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        restoreContextDraft()
         synchronizeDocument()
         // 回写状态：主 App「开始」页据此显示键盘是否已启用、是否给了完全访问
         reportConfigurationStatus()
         if !hasFullAccess { setMode(.gate) }
         else if mode == .gate || mode == .idle { setMode(.idle) }
+        else if mode == .context { render() }
         prewarm()
         // 刚出现时 frame 还没定，等键盘铺开后再量容器间隙
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
@@ -118,7 +122,8 @@ final class KeyboardViewController: UIInputViewController {
         guard current != documentID else { return }
         cancelRequest()
         documentID = current
-        replyContext.clear()
+        // Input identity changes cancel results, but must not erase a draft
+        // being collected by copying several messages in the host app.
         lastContext = nil
         lastMessage = ""
         analysis = nil
@@ -349,12 +354,16 @@ final class KeyboardViewController: UIInputViewController {
     /// 自检入口：把面板直接切到某个状态渲染出来。
     /// 键盘本体不走这条路径；这是给独立预览壳工程用的——键盘扩展没法用脚本唤起，
     /// 靠它才能在模拟器上按不同机型尺寸看布局（见 /tmp 的 PanelPreview 壳）。
+    func previewContextStore(_ store: JevContextDraftStore) { contextDraftStore = store }
+    func previewAppendContext(_ text: String) { appendContextText(text) }
+
     func previewPanel(_ kind: String, analysis: Analysis? = nil, errorText: String = "") {
         self.analysis = analysis
         self.errorText = errorText
         switch kind {
         case "gate": mode = .gate
         case "tones": mode = .tones
+        case "context": restoreContextDraft(); mode = .context
         case "loading": mode = .loading
         case "result": mode = .result
         case "error": mode = .error
@@ -455,7 +464,9 @@ final class KeyboardViewController: UIInputViewController {
         // 宿主 App 自己的发送按钮就出来了（微信是「有内容时 + 变发送」），
         // 键盘下方再挂一个只是添乱。发送键只在结果页——点完候选、手还在面板上时用。
         let contextBtn = KB.button("上下文 · \(replyContext.scene) · \(replyContext.turns.count)/5 条", icon: "text.bubble")
-        contextBtn.addAction(UIAction { [weak self] _ in self?.setMode(.context) }, for: .touchUpInside)
+        contextBtn.addAction(UIAction { [weak self] _ in
+            self?.restoreContextDraft(); self?.setMode(.context)
+        }, for: .touchUpInside)
         let vstack = UIStackView(arrangedSubviews: [guide, btnRow, tonesBtn, contextBtn])
         vstack.axis = .vertical
         vstack.spacing = 8
@@ -572,16 +583,40 @@ final class KeyboardViewController: UIInputViewController {
         render()  // Preserve category and page while refreshing selection.
     }
 
-    // MARK: 手动上下文（仅在内存中，用户点添加才读剪贴板）
+    // MARK: 手动上下文（用户点添加才读取，暂存于本机缓存）
+
+    private func restoreContextDraft() {
+        replyContext = contextDraftStore.load()
+    }
+
+    private func appendContextText(_ text: String) {
+        restoreContextDraft()
+        do {
+            var updated = replyContext
+            try updated.append(text, speaker: contextSpeaker)
+            try contextDraftStore.save(updated)
+            replyContext = updated
+            contextError = ""
+        } catch { contextError = "未添加：" + error.localizedDescription }
+        render()
+    }
 
     private func contextView() -> UIView {
-        let note = KB.label("按时间顺序复制、添加最近对话。分析时会随消息发给模型；换聊天对象请清空。",
+        let note = KB.label("逐条复制后点添加，切走键盘不会清空。草稿在本机保留 30 分钟；分析时发给模型，换聊天请清空。",
                             font: .systemFont(ofSize: 11), color: KB.secondaryText)
         let scenes = UISegmentedControl(items: JevReplyContext.scenes)
         scenes.selectedSegmentIndex = JevReplyContext.scenes.firstIndex(of: replyContext.scene) ?? 0
         scenes.addAction(UIAction { [weak self, weak scenes] _ in
             guard let self, let scenes else { return }
-            self.replyContext.scene = JevReplyContext.scenes[scenes.selectedSegmentIndex]
+            self.restoreContextDraft()
+            do {
+                var updated = self.replyContext
+                updated.scene = JevReplyContext.scenes[scenes.selectedSegmentIndex]
+                try self.contextDraftStore.save(updated)
+                self.replyContext = updated
+                self.contextError = ""
+            } catch { self.contextError = "场景未保存：" + error.localizedDescription }
+            self.render()
         }, for: .valueChanged)
         let speaker = UISegmentedControl(items: JevReplyContext.Speaker.allCases.map(\.rawValue))
         speaker.selectedSegmentIndex = contextSpeaker == .other ? 0 : 1
@@ -592,11 +627,7 @@ final class KeyboardViewController: UIInputViewController {
         add.addAction(UIAction { [weak self] _ in
             guard let self else { return }
             guard self.hasFullAccess else { self.setMode(.gate); return }
-            do {
-                try self.replyContext.append(UIPasteboard.general.string ?? "", speaker: self.contextSpeaker)
-                self.contextError = ""
-            } catch { self.contextError = error.localizedDescription }
-            self.render()
+            self.appendContextText(UIPasteboard.general.string ?? "")
         }, for: .touchUpInside)
         let controls = gridRow([speaker, add])
         controls.heightAnchor.constraint(equalToConstant: 36).isActive = true
@@ -605,11 +636,21 @@ final class KeyboardViewController: UIInputViewController {
         }.joined(separator: "\n\n")
         let body = KB.label(preview.isEmpty ? "还没有上下文（最多 5 条）" : preview,
                             font: .systemFont(ofSize: 12))
-        let status = KB.label(contextError.isEmpty ? "\(replyContext.turns.count)/5 条 · 仅临时保留" : contextError,
+        body.accessibilityIdentifier = "context.preview"
+        let status = KB.label(contextError.isEmpty ? "\(replyContext.turns.count)/5 条 · 本机暂存 30 分钟" : contextError,
                               font: .systemFont(ofSize: 11), color: contextError.isEmpty ? KB.secondaryText : .systemOrange)
         let clear = KB.button("清空", icon: "trash")
+        clear.accessibilityIdentifier = "context.clear"
         clear.addAction(UIAction { [weak self] _ in
-            self?.replyContext.clear(); self?.contextError = ""; self?.render()
+            guard let self else { return }
+            do {
+                try self.contextDraftStore.clear()
+                self.replyContext.clear()
+                self.lastContext = nil
+                self.analysis = nil
+                self.contextError = ""
+            } catch { self.contextError = "清空失败：" + error.localizedDescription }
+            self.render()
         }, for: .touchUpInside)
         let done = KB.button("好了", icon: "checkmark", primary: true)
         done.addTarget(self, action: #selector(backToIdle), for: .touchUpInside)
@@ -948,6 +989,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         reportConfigurationStatus()
         lastMessage = message
+        restoreContextDraft()
         lastContext = replyContext.promptContext
         let context = lastContext
         analysis = nil

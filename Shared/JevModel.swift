@@ -264,12 +264,13 @@ struct JevRequestGate {
     }
 }
 
-/// Temporary, explicitly collected context. Never persisted to preferences/logs.
-struct JevReplyContext {
-    enum Speaker: String, CaseIterable { case other = "对方", me = "我" }
+/// Explicitly collected context, stored only in a short-lived local draft.
+struct JevReplyContext: Codable {
+    enum Speaker: String, CaseIterable, Codable { case other = "对方", me = "我" }
     static let scenes = ["通用", "同事", "客户", "朋友"]
     var scene = "通用"
-    private(set) var turns: [(speaker: Speaker, text: String)] = []
+    struct Turn: Codable { var speaker: Speaker; var text: String }
+    private(set) var turns: [Turn] = []
     mutating func append(_ raw: String, speaker: Speaker) throws {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw JevError.config("剪贴板没有文字") }
@@ -277,12 +278,65 @@ struct JevReplyContext {
         guard text.count <= 2000, turns.reduce(0, { $0 + $1.text.count }) + text.count <= 6000 else {
             throw JevError.config("单条最多 2000 字，上下文合计最多 6000 字")
         }
-        turns.append((speaker, text))
+        turns.append(Turn(speaker: speaker, text: text))
     }
     mutating func clear() { self = JevReplyContext() }
     var promptContext: String? {
         guard scene != "通用" || !turns.isEmpty else { return nil }
         return (["沟通场景：" + scene] + turns.map { "\($0.speaker.rawValue)：\($0.text)" }).joined(separator: "\n")
+    }
+}
+
+/// Local cache survives extension recreation; it never enters shared configuration
+/// or logs. Expired/corrupt drafts are removed on the next access. Caches are not
+/// backed up; iOS file protection additionally protects content while locked.
+struct JevContextDraftStore {
+    static let lifetime: TimeInterval = 30 * 60
+    let fileURL: URL?
+    init(directory: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first) {
+        fileURL = directory?.appendingPathComponent("jev-context-draft-v1.json")
+    }
+    private struct Draft: Codable {
+        var context: JevReplyContext
+        var savedAt: Date
+    }
+    func load(now: Date = Date()) -> JevReplyContext {
+        guard let fileURL else { return JevReplyContext() }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            guard data.count <= 100_000 else { try clear(); return JevReplyContext() }
+            let draft = try JSONDecoder().decode(Draft.self, from: data)
+            let age = now.timeIntervalSince(draft.savedAt)
+            guard age >= 0, age < Self.lifetime,
+                  JevReplyContext.scenes.contains(draft.context.scene) else {
+                try clear(); return JevReplyContext()
+            }
+            // Validate limits on restoration too; do not trust a persisted file.
+            var restored = JevReplyContext()
+            restored.scene = draft.context.scene
+            for turn in draft.context.turns { try restored.append(turn.text, speaker: turn.speaker) }
+            return restored
+        } catch {
+            // File protection can temporarily make the cache inaccessible while
+            // locked; do not erase it on an I/O error.
+            if error is DecodingError || error is JevError { try? clear() }
+            return JevReplyContext()
+        }
+    }
+    func save(_ context: JevReplyContext, now: Date = Date()) throws {
+        guard context.promptContext != nil else { try clear(); return }
+        guard let fileURL else { throw JevError.config("无法访问上下文临时目录") }
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(Draft(context: context, savedAt: now))
+        var options: Data.WritingOptions = [.atomic]
+        #if os(iOS)
+        options.insert(.completeFileProtection)
+        #endif
+        try data.write(to: fileURL, options: options)
+    }
+    func clear() throws {
+        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        try FileManager.default.removeItem(at: fileURL)
     }
 }
 

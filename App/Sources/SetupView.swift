@@ -109,7 +109,7 @@ struct SetupView: View {
 
     private var privacySection: some View {
         Section("隐私边界") {
-            Label("聊天内容只发给你自己配置的模型接口，无自建服务器、不落盘、不进日志", systemImage: "hand.raised")
+            Label("聊天内容只发给自配模型；上下文草稿在本机暂存 30 分钟，可随时清空，不进日志", systemImage: "hand.raised")
             Label("Key 存在本机 App Group 私有容器，仅 App 与键盘可读", systemImage: "key")
             Label("候选只「插入」输入框，发送永远由你手动完成", systemImage: "square.and.arrow.down.on.square")
             Label("键盘不监听、不上传按键内容；完全访问可随时在系统设置里关闭或移除键盘", systemImage: "shield")

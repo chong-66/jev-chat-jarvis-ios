@@ -8,6 +8,39 @@ import UIKit
         [view] + view.subviews.flatMap(descendants)
     }
 
+    func testContextSurvivesInputChangesAndControllerRecreation() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("context-ui-" + UUID().uuidString)
+        let store = JevContextDraftStore(directory: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        func makeController() -> KeyboardViewController {
+            let controller = KeyboardViewController()
+            controller.previewContextStore(store)
+            controller.loadViewIfNeeded()
+            controller.previewPanel("context")
+            return controller
+        }
+        func previewText(_ controller: KeyboardViewController) -> String {
+            (descendants(controller.view).first { $0.accessibilityIdentifier == "context.preview" } as? UILabel)?.text ?? ""
+        }
+        let first = makeController()
+        first.previewAppendContext("第一条对话")
+        XCTAssertTrue(previewText(first).contains("第一条对话"))
+        first.viewWillDisappear(false)
+        first.textDidChange(nil)
+        first.previewPanel("context")
+        XCTAssertTrue(previewText(first).contains("第一条对话"))
+        first.previewAppendContext("第二条对话")
+        XCTAssertTrue(previewText(first).contains("第一条对话"))
+        XCTAssertTrue(previewText(first).contains("第二条对话"))
+        let recreated = makeController()
+        XCTAssertTrue(previewText(recreated).contains("第一条对话"))
+        XCTAssertTrue(previewText(recreated).contains("第二条对话"))
+        let clear = try XCTUnwrap(descendants(recreated.view).first { $0.accessibilityIdentifier == "context.clear" } as? UIButton)
+        clear.sendActions(for: .touchUpInside)
+        XCTAssertFalse(previewText(makeController()).contains("第一条对话"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.fileURL!.path))
+    }
+
     func testCategoriesAndEveryPageAreReachableOnNarrowAndWidePhones() throws {
         for width: CGFloat in [320, 390, 430] {
             let controller = KeyboardViewController()
