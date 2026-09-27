@@ -22,6 +22,10 @@ struct SetupView: View {
         }
     }
 
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知版本"
+    }
+
     private func refresh() {
         kbStatus = JevStore.loadKeyboardStatus()
         groupOK = JevStore.groupWritable
@@ -54,6 +58,11 @@ struct SetupView: View {
                         : kbStatus?.generationConfigured == true
                             ? "已收到键盘回写：键盘已读取生成层配置"
                             : "已收到键盘回写，但尚未确认生成层配置；请检查「模型」页并重新切换键盘")
+            row(icon: "number", title: "键盘版本",
+                ok: kbStatus?.keyboardVersion == appVersion,
+                detail: "主 App：\(appVersion)；键盘：\(kbStatus?.keyboardVersion ?? "尚未回报版本")"
+                    + (kbStatus?.presetCount.map { "；内置 \($0) 种话术" } ?? "")
+                    + "。这是最近一次键盘回写；更新后请重新切换到 Jev 键盘。")
         } header: {
             Text("状态")
         } footer: {

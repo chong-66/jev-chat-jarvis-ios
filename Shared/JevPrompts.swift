@@ -120,6 +120,19 @@ func orderedToneNames(custom: [String: String]) -> [String] {
     return names
 }
 
+/// Relationship shortcuts keep the requested presets reachable without scrolling.
+enum JevToneCategory: String, CaseIterable {
+    case partner = "恋人", leader = "领导", almost = "暧昧", all = "全部"
+    func names(custom: [String: String]) -> [String] {
+        switch self {
+        case .partner: return ["恋人日常", "恋人撒娇"]
+        case .leader: return ["向上汇报", "向上提建议"]
+        case .almost: return ["暧昧试探", "暧昧关心"]
+        case .all: return orderedToneNames(custom: custom)
+        }
+    }
+}
+
 // MARK: - 起草 prompt（与 macOS 版 src/generate.py PROMPT_ONE 逐字一致）
 
 /// {n} 出现两次是刻意的：「只要 n 行」的要求必须与条数一致，否则模型会自己凑一行。

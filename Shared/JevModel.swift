@@ -152,6 +152,8 @@ struct KeyboardStatus: Codable, Equatable {
     var lastSeen: Date
     var hasFullAccess: Bool
     var generationConfigured: Bool? = nil
+    var keyboardVersion: String? = nil
+    var presetCount: Int? = nil
 }
 
 // MARK: - App Group 存储

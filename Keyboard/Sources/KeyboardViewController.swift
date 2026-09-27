@@ -27,7 +27,12 @@ final class KeyboardViewController: UIInputViewController {
     private var lastContext: String?
     private var refinementIndex: Int?
     private var documentID: UUID?
-    private weak var toneScroll: UIScrollView?
+    private var toneCategory: JevToneCategory = .partner
+    private var tonePage = 0
+    private static let tonesPerPage = 6
+    private var keyboardVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知版本"
+    }
 
 
     private enum Source { case clipboard, inputField }
@@ -142,7 +147,8 @@ final class KeyboardViewController: UIInputViewController {
     private func reportConfigurationStatus() {
         JevStore.saveKeyboardStatus(KeyboardStatus(
             lastSeen: Date(), hasFullAccess: hasFullAccess,
-            generationConfigured: !JevStore.loadConfig().generation.key.isEmpty))
+            generationConfigured: !JevStore.loadConfig().generation.key.isEmpty,
+            keyboardVersion: keyboardVersion, presetCount: BUILTIN_TONES.count))
     }
 
     /// 预热生成层连接。实测同一条起草请求，第二次能从 ~1.9 秒降到 ~0.5 秒——
@@ -180,9 +186,10 @@ final class KeyboardViewController: UIInputViewController {
             dot.heightAnchor.constraint(equalToConstant: 8),
         ])
 
-        statusLabel = KB.label(hasFullAccess ? "Jev · 已连接" : "Jev · 需要完全访问",
+        statusLabel = KB.label("Jev \(keyboardVersion) · " + (hasFullAccess ? "已连接" : "需要完全访问"),
                                font: .systemFont(ofSize: 12, weight: .medium), color: KB.secondaryText)
 
+        statusLabel.accessibilityIdentifier = "keyboard.version"
         let title = UIStackView(arrangedSubviews: [dot, statusLabel])
         title.axis = .horizontal
         title.spacing = 6
@@ -219,6 +226,7 @@ final class KeyboardViewController: UIInputViewController {
             topBar.heightAnchor.constraint(equalToConstant: 36),
             title.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
             title.leadingAnchor.constraint(equalTo: topBar.leadingAnchor),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: hstack.leadingAnchor, constant: -6),
             hstack.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
             hstack.trailingAnchor.constraint(equalTo: topBar.trailingAnchor),
         ])
@@ -473,47 +481,69 @@ final class KeyboardViewController: UIInputViewController {
     /// 每次从共享配置重新读（App 那边改过也能立刻看到），选中即落盘，下一次分析就生效。
     private func tonesView() -> UIView {
         let cfg = JevStore.loadConfig()
-        let names = orderedToneNames(custom: cfg.customTones)
+        let names = toneCategory.names(custom: cfg.customTones)
+        let pageCount = max(1, (names.count + Self.tonesPerPage - 1) / Self.tonesPerPage)
+        tonePage = min(max(0, tonePage), pageCount - 1)
+        let pageNames = Array(names.dropFirst(tonePage * Self.tonesPerPage).prefix(Self.tonesPerPage))
         let active = cfg.activeSlots
+        let total = orderedToneNames(custom: cfg.customTones).count
 
-        let title = KB.label("选话术（最多 \(MAX_SLOTS) 个 · 每个每次出 2 条）",
-                             font: .systemFont(ofSize: 12), color: KB.secondaryText, lines: 0)
-        var blocks: [UIView] = [title]
+        let categories = UISegmentedControl(items: JevToneCategory.allCases.map(\.rawValue))
+        categories.selectedSegmentIndex = JevToneCategory.allCases.firstIndex(of: toneCategory) ?? 0
+        categories.accessibilityIdentifier = "tones.categories"
+        categories.addAction(UIAction { [weak self, weak categories] _ in
+            guard let self, let categories else { return }
+            self.toneCategory = JevToneCategory.allCases[categories.selectedSegmentIndex]
+            self.tonePage = 0
+            self.render()
+        }, for: .valueChanged)
+        categories.heightAnchor.constraint(equalToConstant: 28).isActive = true
 
-        // 每行 3 个等宽格子：话术名长短不一，等宽比按内容排更好点、也更整齐
-        var row: [UIButton] = []
-        for name in names {
-            let btn = KB.button(name, primary: active.contains(name),
-                                font: .systemFont(ofSize: 13, weight: .medium))
-            btn.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        let title = KB.label("共 \(total) 种 · \(toneCategory.rawValue) \(names.count) 种 · 最多选 \(MAX_SLOTS) 种",
+                             font: .systemFont(ofSize: 11), color: KB.secondaryText, lines: 1)
+        title.accessibilityIdentifier = "tones.count"
+        var blocks: [UIView] = [categories, title]
+        var row: [UIView] = []
+        for name in pageNames {
+            let btn = KB.button(name, primary: active.contains(name), font: .systemFont(ofSize: 12, weight: .medium))
+            btn.heightAnchor.constraint(equalToConstant: 32).isActive = true
             btn.accessibilityIdentifier = name
+            btn.accessibilityTraits = active.contains(name) ? [.button, .selected] : [.button]
             btn.addTarget(self, action: #selector(toneChipTapped(_:)), for: .touchUpInside)
             row.append(btn)
-            if row.count == 3 {
-                blocks.append(gridRow(row))
-                row = []
-            }
+            if row.count == 3 { blocks.append(gridRow(row)); row = [] }
         }
         if !row.isEmpty {
-            // 补齐到 3 个：不加空位的话，最后一行的单个话术会被 .fillEqually 拉成整行宽
-            var cells: [UIView] = row
-            while cells.count < 3 { cells.append(UIView()) }
-            blocks.append(gridRow(cells))
+            while row.count < 3 { row.append(UIView()) }
+            blocks.append(gridRow(row))
         }
 
-        let done = KB.button("好了", icon: "checkmark", primary: true)
-        done.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        let previous = KB.button("上一页", font: .systemFont(ofSize: 12))
+        previous.accessibilityIdentifier = "tones.previous"
+        previous.isEnabled = tonePage > 0
+        previous.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.tonePage -= 1; self.render()
+        }, for: .touchUpInside)
+        let page = KB.label("\(tonePage + 1)/\(pageCount)", font: .systemFont(ofSize: 12), alignment: .center)
+        page.accessibilityIdentifier = "tones.page"
+        let next = KB.button("下一页", font: .systemFont(ofSize: 12))
+        next.accessibilityIdentifier = "tones.next"
+        next.isEnabled = tonePage + 1 < pageCount
+        next.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.tonePage += 1; self.render()
+        }, for: .touchUpInside)
+        let done = KB.button("好了", icon: "checkmark", primary: true, font: .systemFont(ofSize: 12))
+        done.accessibilityIdentifier = "tones.done"
         done.addTarget(self, action: #selector(backToIdle), for: .touchUpInside)
-        let choices = UIStackView(arrangedSubviews: blocks)
-        choices.axis = .vertical
-        choices.spacing = 6
-        let scroll = scrolling(choices)
-        scroll.delaysContentTouches = false
-        toneScroll = scroll
-        let outer = UIStackView(arrangedSubviews: [scroll, done])
+        let actions = gridRow([previous, page, next, done])
+        actions.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        blocks.append(actions)
+        let outer = UIStackView(arrangedSubviews: blocks)
         outer.axis = .vertical
         outer.spacing = 6
-        fitBlocks = [choices, done]
+        fitBlocks = blocks
         return outer
     }
 
@@ -539,13 +569,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         cfg.slots = Array(slots.prefix(MAX_SLOTS))
         JevStore.saveConfig(cfg)                       // 立刻落盘：下一次分析就用新槽位
-        let offset = toneScroll?.contentOffset ?? .zero
-        render()
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.mode == .tones else { return }
-            self.view.layoutIfNeeded()
-            self.toneScroll?.setContentOffset(offset, animated: false)
-        }
+        render()  // Preserve category and page while refreshing selection.
     }
 
     // MARK: 手动上下文（仅在内存中，用户点添加才读剪贴板）
