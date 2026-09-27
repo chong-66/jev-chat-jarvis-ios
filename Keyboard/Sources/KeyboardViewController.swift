@@ -27,6 +27,7 @@ final class KeyboardViewController: UIInputViewController {
     private var lastContext: String?
     private var refinementIndex: Int?
     private var documentID: UUID?
+    private weak var toneScroll: UIScrollView?
 
 
     private enum Source { case clipboard, inputField }
@@ -503,12 +504,16 @@ final class KeyboardViewController: UIInputViewController {
         let done = KB.button("好了", icon: "checkmark", primary: true)
         done.heightAnchor.constraint(equalToConstant: 36).isActive = true
         done.addTarget(self, action: #selector(backToIdle), for: .touchUpInside)
-        blocks.append(done)
-
-        let outer = UIStackView(arrangedSubviews: blocks)
+        let choices = UIStackView(arrangedSubviews: blocks)
+        choices.axis = .vertical
+        choices.spacing = 6
+        let scroll = scrolling(choices)
+        scroll.delaysContentTouches = false
+        toneScroll = scroll
+        let outer = UIStackView(arrangedSubviews: [scroll, done])
         outer.axis = .vertical
         outer.spacing = 6
-        fitBlocks = blocks
+        fitBlocks = [choices, done]
         return outer
     }
 
@@ -534,7 +539,13 @@ final class KeyboardViewController: UIInputViewController {
         }
         cfg.slots = Array(slots.prefix(MAX_SLOTS))
         JevStore.saveConfig(cfg)                       // 立刻落盘：下一次分析就用新槽位
-        render()                                       // 重画刷新高亮
+        let offset = toneScroll?.contentOffset ?? .zero
+        render()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.mode == .tones else { return }
+            self.view.layoutIfNeeded()
+            self.toneScroll?.setContentOffset(offset, animated: false)
+        }
     }
 
     // MARK: 手动上下文（仅在内存中，用户点添加才读剪贴板）
