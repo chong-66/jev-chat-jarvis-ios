@@ -35,13 +35,15 @@ enum JevError: LocalizedError {
 /// （这条规则来自社区 iOS 版踩过的真机坑，见 README。）
 enum JevHTTP {
     static func postJSON(_ body: [String: Any], url: String, headers: [String: String],
-                         budget: Double, stage: String, retries: Int = 1) async throws -> [String: Any] {
+                         budget: Double, stage: String, retries: Int = 1, session: URLSession? = nil) async throws -> [String: Any] {
+        try Task.checkCancellation()
         guard let u = URL(string: url) else { throw JevError.config("端点不合法: \(url)") }
         let payload = try JSONSerialization.data(withJSONObject: body)
         let start = Date()
         var lastErr: Error?
 
         for attempt in 0...retries {
+            try Task.checkCancellation()
             let remaining = budget - Date().timeIntervalSince(start)
             guard remaining > 2 else { throw lastErr ?? JevError.timeout(stage, budget) }
             var req = URLRequest(url: u)
@@ -50,7 +52,8 @@ enum JevHTTP {
             for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
             req.httpBody = payload
             do {
-                let (data, resp) = try await ephemeralSession().data(for: req)
+                let (data, resp) = try await (session ?? ephemeralSession()).data(for: req)
+                try Task.checkCancellation()
                 let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
                 if code == 200, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     return obj
@@ -60,7 +63,7 @@ enum JevHTTP {
                     lastErr = JevError.http(code, String(text.prefix(200)))
                     let left = budget - Date().timeIntervalSince(start)
                     if left > 4 {
-                        try? await Task.sleep(nanoseconds: UInt64(min(pow(2, Double(attempt)), left - 2) * 1_000_000_000))
+                        try await Task.sleep(nanoseconds: UInt64(min(pow(2, Double(attempt)), left - 2) * 1_000_000_000))
                     }
                     continue
                 }
@@ -68,11 +71,14 @@ enum JevHTTP {
             } catch let e as JevError {
                 throw e
             } catch {
+                if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    throw CancellationError()
+                }
                 lastErr = error
                 if attempt < retries {
                     let left = budget - Date().timeIntervalSince(start)
                     if left > 4 {
-                        try? await Task.sleep(nanoseconds: UInt64(min(2.0, left - 2) * 1_000_000_000))
+                        try await Task.sleep(nanoseconds: UInt64(min(2.0, left - 2) * 1_000_000_000))
                     }
                     continue
                 }

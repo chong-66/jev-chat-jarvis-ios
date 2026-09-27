@@ -244,3 +244,62 @@ enum JevStore {
     }
 #endif
 }
+
+
+// Request identities must change even when the same message is regenerated.
+// UI owners use this on the main actor before accepting every async callback.
+struct JevRequestGate {
+    private(set) var currentID: UUID?
+    mutating func begin() -> UUID {
+        let id = UUID()
+        currentID = id
+        return id
+    }
+    func accepts(_ id: UUID) -> Bool { currentID == id }
+    mutating func cancel() { currentID = nil }
+    mutating func finish(_ id: UUID) {
+        if accepts(id) { currentID = nil }
+    }
+}
+
+/// Temporary, explicitly collected context. Never persisted to preferences/logs.
+struct JevReplyContext {
+    enum Speaker: String, CaseIterable { case other = "对方", me = "我" }
+    static let scenes = ["通用", "同事", "客户", "朋友"]
+    var scene = "通用"
+    private(set) var turns: [(speaker: Speaker, text: String)] = []
+    mutating func append(_ raw: String, speaker: Speaker) throws {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw JevError.config("剪贴板没有文字") }
+        guard turns.count < 5 else { throw JevError.config("最多 5 条，请先清空再添加") }
+        guard text.count <= 2000, turns.reduce(0, { $0 + $1.text.count }) + text.count <= 6000 else {
+            throw JevError.config("单条最多 2000 字，上下文合计最多 6000 字")
+        }
+        turns.append((speaker, text))
+    }
+    mutating func clear() { self = JevReplyContext() }
+    var promptContext: String? {
+        guard scene != "通用" || !turns.isEmpty else { return nil }
+        return (["沟通场景：" + scene] + turns.map { "\($0.speaker.rawValue)：\($0.text)" }).joined(separator: "\n")
+    }
+}
+
+enum JevReplyAdjustment: String, CaseIterable {
+    case shorter = "更简短", softer = "更委婉", firmer = "更坚定"
+    var instruction: String {
+        switch self {
+        case .shorter: return "删去赘述，压缩长度，保留关键事实与原意。"
+        case .softer: return "语气更礼貌委婉，但不要改变立场或新增承诺。"
+        case .firmer: return "表达更明确坚定，但不要攻击、威胁或新增承诺。"
+        }
+    }
+}
+
+enum JevReplyText {
+    /// A candidate must never trigger a host's return-to-send behavior.
+    static func singleLine(_ text: String) -> String {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }.joined(separator: " ")
+    }
+}

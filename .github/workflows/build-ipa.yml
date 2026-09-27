@@ -47,6 +47,8 @@ jobs:
           xcodegen generate
           swiftc -o "$RUNNER_TEMP/jevcheck" tools/PromptCheck/main.swift Shared/*.swift
           "$RUNNER_TEMP/jevcheck"
+          swiftc -parse-as-library -o "$RUNNER_TEMP/jevasynccheck" tools/AsyncCheck/main.swift Shared/*.swift
+          "$RUNNER_TEMP/jevasynccheck"
 
       - name: Build app and keyboard without Apple signing
         run: |
