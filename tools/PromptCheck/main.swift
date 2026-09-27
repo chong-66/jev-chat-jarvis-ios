@@ -160,44 +160,5 @@ check("微调·传入原回复和消息", "\(refinedPrompt.contains("最早下�
 check("微调·委婉指令", "\(refinedPrompt.contains("语气更礼貌委婉"))", "true")
 check("微调·单条输出", "\(refinedPrompt.contains("只输出修改后的 1 条回复"))", "true")
 
-// MARK: 请求取消与同消息重试
-var gate = JevRequestGate()
-let firstRequest = gate.begin()
-let retryRequest = gate.begin()
-check("请求·同消息重试拒绝旧回调", "\(gate.accepts(firstRequest))", "false")
-gate.finish(firstRequest)
-check("请求·迟到完成不结束新请求", "\(gate.accepts(retryRequest))", "true")
-gate.cancel()
-check("请求·取消拒绝部分及最终结果", "\(gate.accepts(retryRequest))", "false")
-let finalRequest = gate.begin()
-gate.finish(finalRequest)
-check("请求·完成后拒绝排队中的部分结果", "\(gate.accepts(finalRequest))", "false")
-
-var replyContext = JevReplyContext()
-check("上下文·默认不附加", "\(replyContext.promptContext == nil)", "true")
-try! replyContext.append("  周五能交付吗？\n", speaker: .other)
-try! replyContext.append("最早下周一", speaker: .me)
-replyContext.scene = "客户"
-check("上下文·顺序角色场景", replyContext.promptContext!, "沟通场景：客户\n对方：周五能交付吗？\n我：最早下周一")
-do { try replyContext.append(" \n ", speaker: .me) } catch {}
-check("上下文·空白不添加", "\(replyContext.turns.count)", "2")
-do { try replyContext.append(String(repeating: "字", count: 2001), speaker: .other) } catch {}
-check("上下文·拒绝超长且不改变原文", "\(replyContext.turns.count)", "2")
-for _ in 0..<3 { try! replyContext.append("后续", speaker: .other) }
-do { try replyContext.append("第六条", speaker: .me) } catch {}
-check("上下文·最多五条", "\(replyContext.turns.count)", "5")
-replyContext.clear()
-check("上下文·清空也重置场景", "\(replyContext.promptContext == nil)", "true")
-for _ in 0..<3 { try! replyContext.append(String(repeating: "字", count: 2000), speaker: .other) }
-do { try replyContext.append("超限", speaker: .me) } catch {}
-check("上下文·合计六千字", "\(replyContext.turns.count)", "3")
-check("插入·清除回车换行", JevReplyText.singleLine("一\r\n二\n三\u{2028}四"), "一 二 三 四")
-check("插入·空行不触发发送", JevReplyText.singleLine("\r\n\n"), "")
-let refinedPrompt = buildRefinementPrompt(message: "周五能交付吗？", context: "客户", candidate: "最早下周一", adjustment: .softer)
-check("微调·保留事实约束", "\(refinedPrompt.contains("不要编造"))", "true")
-check("微调·传入原回复和消息", "\(refinedPrompt.contains("最早下周一") && refinedPrompt.contains("周五能交付吗？"))", "true")
-check("微调·委婉指令", "\(refinedPrompt.contains("语气更礼貌委婉"))", "true")
-check("微调·单条输出", "\(refinedPrompt.contains("只输出修改后的 1 条回复"))", "true")
-
 print("\n\(pass) passed, \(fail) failed")
 exit(fail == 0 ? 0 : 1)
