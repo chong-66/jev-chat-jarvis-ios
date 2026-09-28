@@ -1,0 +1,40 @@
+name: KeyboardLayoutCheck
+options:
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5"
+    GENERATE_INFOPLIST_FILE: YES
+    CODE_SIGNING_ALLOWED: NO
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  LayoutHost:
+    type: application
+    platform: iOS
+    sources:
+      - Host.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.jev.layout-host
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  KeyboardLayoutTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests.swift
+      - ../../Keyboard/Sources
+      - ../../Shared
+    dependencies:
+      - target: LayoutHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.jev.layout-tests
+schemes:
+  KeyboardLayoutCheck:
+    build:
+      targets:
+        LayoutHost: all
+        KeyboardLayoutTests: [test]
+    test:
+      targets: [KeyboardLayoutTests]

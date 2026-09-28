@@ -58,6 +58,7 @@ final class JevPipeline {
                  onPartial: ((Analysis) -> Void)? = nil) async -> Analysis {
         let start = Date()
         var out = Analysis(message: message)
+        guard !Task.isCancelled else { return out }
 
         let msg = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !msg.isEmpty else {
@@ -85,10 +86,12 @@ final class JevPipeline {
             onStage?(.judging)
             judgeTask = Task { [judge] in
                 let r = try? await judge.judge(message: msg, context: context)
-                if let r { JevJudgeCache.shared.put(r, message: msg, context: context) }
+                if let r, !Task.isCancelled { JevJudgeCache.shared.put(r, message: msg, context: context) }
                 return r
             }
         }
+
+        defer { judgeTask?.cancel() }
 
         // 2) 起草：一个话术一次请求，并发；不等判断、也不等齐——每完成一个就先交给界面
         let tones = allTones(custom: cfg.customTones)
@@ -119,13 +122,17 @@ final class JevPipeline {
                                      onStage: onStage) { r in
             onPartial?(partial(with: r, judge: JevJudgeCache.shared.get(message: msg, context: context)))
         }
+        guard !Task.isCancelled else { return out }
         out.notices += round.notices
         var drafted = round.candidates
 
         // 判断落地：给排序用。等它有时间上限，别让一个卡住的上游拖住整条链路。
         if let t = judgeTask, judgeResult == nil {
-            judgeResult = try? await withTimeout(seconds: 4) { await t.value }
+            judgeResult = try? await withTimeout(seconds: 4) {
+                await withTaskCancellationHandler(operation: { await t.value }, onCancel: { t.cancel() })
+            }
         }
+        guard !Task.isCancelled else { return out }
         out.judge = judgeResult
         if judge.isConfigured, judgeResult == nil {
             out.notices.append("判断层没响应，已盲起草（不影响出候选）")
@@ -145,6 +152,7 @@ final class JevPipeline {
             }
         }
 
+        guard !Task.isCancelled else { return out }
         guard !drafted.isEmpty else {
             out.fatalError = out.notices.first ?? "候选生成失败：请到 App「模型」页点「测试连接」检查配置"
             out.elapsed = Date().timeIntervalSince(start)
@@ -182,6 +190,7 @@ final class JevPipeline {
             out.candidates = ordered
         }
 
+        guard !Task.isCancelled else { return out }
         out.elapsed = Date().timeIntervalSince(start)
         onStage?(.done)
         return out
@@ -222,6 +231,7 @@ final class JevPipeline {
             }
             var done = 0
             for await (name, texts, err) in group {
+                guard !Task.isCancelled else { group.cancelAll(); break }
                 done += 1
                 onStage?(.drafting(done: done, total: active.count))
                 if let err { round.notices.append("「\(name)」失败：\(err)") }
@@ -236,6 +246,7 @@ final class JevPipeline {
     // MARK: 超时包装（阶段级截止时间，比预算更硬：到点放弃该阶段而不是拖慢整体）
     private func withTimeout<T: Sendable>(seconds: Double, _ op: @escaping @Sendable () async throws -> T) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
+            defer { group.cancelAll() }
             group.addTask { try await op() }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))

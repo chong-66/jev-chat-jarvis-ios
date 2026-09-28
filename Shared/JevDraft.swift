@@ -22,6 +22,20 @@ final class JevDraft {
         return !g.key.isEmpty && !g.base.isEmpty && !g.model.isEmpty
     }
 
+    func refine(message: String, context: String?, candidate: String,
+                adjustment: JevReplyAdjustment) async throws -> String {
+        try Task.checkCancellation()
+        guard isConfigured else { throw JevError.missingKey("生成层") }
+        let prompt = buildRefinementPrompt(message: message, context: context,
+                                           candidate: candidate, adjustment: adjustment)
+        let raw = try await call(prompt: prompt)
+        try Task.checkCancellation()
+        guard let first = CandidateParser.parse(raw, limit: 1).first else { throw JevError.emptyReply }
+        let text = JevReplyText.singleLine(first)
+        guard !text.isEmpty else { throw JevError.emptyReply }
+        return text
+    }
+
     // MARK: URL 拼接
     //
     // base 带不带末尾 /chat/completions、/v1、/v4 都能拼对：

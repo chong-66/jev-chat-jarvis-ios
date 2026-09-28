@@ -22,6 +22,10 @@ struct SetupView: View {
         }
     }
 
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知版本"
+    }
+
     private func refresh() {
         kbStatus = JevStore.loadKeyboardStatus()
         groupOK = JevStore.groupWritable
@@ -35,18 +39,30 @@ struct SetupView: View {
                 ok: kbStatus != nil && Date().timeIntervalSince(kbStatus!.lastSeen) < 90,
                 detail: kbStatus.map {
                     "最近使用：\(timeAgo($0.lastSeen))"
-                } ?? "还没检测到键盘被唤起过（在任意输入框里切换到 Jev 键盘即可）")
+                } ?? "尚未收到键盘状态：请切换到 Jev 键盘；若已用过，请检查共享配置")
 
             row(icon: "lock.open", title: "允许完全访问",
                 ok: kbStatus?.hasFullAccess == true,
-                detail: kbStatus?.hasFullAccess == true
+                detail: kbStatus == nil
+                    ? "尚未收到键盘状态，无法判断；请以系统设置中的开关为准"
+                    : kbStatus?.hasFullAccess == true
                     ? "已开启：键盘可以联网、读剪贴板"
                     : "未开启：键盘无法联网和读剪贴板，也不会出候选")
 
             row(icon: "externaldrive.connected.to.line.below", title: "App Group 共享",
-                ok: groupOK, detail: groupOK
-                    ? "配置可以同步到键盘"
-                    : "共享容器不可用：请确认用 Xcode 把 App 和键盘扩展签在同一个 Team 下")
+                ok: groupOK && kbStatus?.generationConfigured == true,
+                detail: !groupOK
+                    ? "共享容器不可用：签名需为 App 和键盘授权同一共享组，且代码读取的组名必须匹配"
+                    : kbStatus == nil
+                        ? "共享容器可用，等待键盘回写确认；请先切换到 Jev 键盘"
+                        : kbStatus?.generationConfigured == true
+                            ? "已收到键盘回写：键盘已读取生成层配置"
+                            : "已收到键盘回写，但尚未确认生成层配置；请检查「模型」页并重新切换键盘")
+            row(icon: "number", title: "键盘版本",
+                ok: kbStatus?.keyboardVersion == appVersion,
+                detail: "主 App：\(appVersion)；键盘：\(kbStatus?.keyboardVersion ?? "尚未回报版本")"
+                    + (kbStatus?.presetCount.map { "；内置 \($0) 种话术" } ?? "")
+                    + "。这是最近一次键盘回写；更新后请重新切换到 Jev 键盘。")
         } header: {
             Text("状态")
         } footer: {
@@ -93,7 +109,7 @@ struct SetupView: View {
 
     private var privacySection: some View {
         Section("隐私边界") {
-            Label("聊天内容只发给你自己配置的模型接口，无自建服务器、不落盘、不进日志", systemImage: "hand.raised")
+            Label("聊天内容只发给自配模型；上下文草稿在本机暂存 30 分钟，可随时清空，不进日志", systemImage: "hand.raised")
             Label("Key 存在本机 App Group 私有容器，仅 App 与键盘可读", systemImage: "key")
             Label("候选只「插入」输入框，发送永远由你手动完成", systemImage: "square.and.arrow.down.on.square")
             Label("键盘不监听、不上传按键内容；完全访问可随时在系统设置里关闭或移除键盘", systemImage: "shield")

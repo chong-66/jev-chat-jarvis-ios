@@ -67,5 +67,121 @@ check("风险·0 分", riskLabel(for: 0), RISK_LEVELS[0])
 check("风险·四舍五入", riskLabel(for: 4.6), RISK_LEVELS[5])
 check("风险·封顶", riskLabel(for: 8.9), RISK_LEVELS[9])
 
+// MARK: 重签后的共享组与配置迁移
+
+let hostID = "com.jevchat.jarvis.ios.TESTTEAM01"
+let signedGroup = "group." + hostID
+let hostGroups = JevSharedGroup.candidates(bundleID: hostID, isKeyboard: false)
+let keyboardGroups = JevSharedGroup.candidates(bundleID: hostID + ".keyboard", isKeyboard: true)
+check("共享·重签 App 与键盘组名一致", hostGroups.joined(separator: ","), keyboardGroups.joined(separator: ","))
+check("共享·优先重签组", hostGroups.first ?? "nil", signedGroup)
+check("共享·原版不重复候选", "\(JevSharedGroup.candidates(bundleID: "com.jevchat.jarvis.ios", isKeyboard: false).count)", "1")
+check("共享·无 bundle ID", JevSharedGroup.candidates(bundleID: nil, isKeyboard: false).first!, JevSharedGroup.originalID)
+check("共享·拒绝猜测未知扩展后缀", JevSharedGroup.candidates(bundleID: hostID + ".unknown", isKeyboard: true).joined(), JevSharedGroup.originalID)
+check("共享·两组都有权限时选择重签组", JevSharedGroup.resolve(hostGroups) { _ in true } ?? "nil", signedGroup)
+check("共享·原组仍可用时回退", JevSharedGroup.resolve(hostGroups) { $0 == JevSharedGroup.originalID } ?? "nil", JevSharedGroup.originalID)
+check("共享·无权限不能假报可用", JevSharedGroup.resolve(hostGroups) { _ in false } ?? "nil", "nil")
+
+// Isolated stores model the previous private suite, host backup, and new group.
+// Never use real credentials or the user's preference domains in these checks.
+let testPrefix = "jev.tests." + UUID().uuidString
+let domainNames = ["shared", "local", "legacy"].map { testPrefix + "." + $0 }
+let testStores = domainNames.map { UserDefaults(suiteName: $0)! }
+let sharedStore = testStores[0], localStore = testStores[1], legacyStore = testStores[2]
+func resetStores() {
+    for (index, name) in domainNames.enumerated() { testStores[index].removePersistentDomain(forName: name) }
+}
+var legacyConfig = JevConfig()
+legacyConfig.genKey = "test-only-placeholder"
+legacyConfig.genModel = "test-model"
+legacyConfig.slots = ["测试话术"]
+let encodedLegacy = try! JSONEncoder().encode(legacyConfig)
+legacyStore.set(encodedLegacy, forKey: "jev.config.v1")
+let migrated = JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: legacyStore, isKeyboard: false)
+check("迁移·保留旧配置", "\(migrated == legacyConfig)", "true")
+check("迁移·写入共享区", "\(sharedStore.data(forKey: "jev.config.v1") != nil)", "true")
+check("迁移·键盘读到迁移配置", "\(JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: nil, isKeyboard: true) == legacyConfig)", "true")
+var currentConfig = legacyConfig
+currentConfig.genModel = "new-model"
+sharedStore.set(try! JSONEncoder().encode(currentConfig), forKey: "jev.config.v1")
+check("迁移·旧备份不能覆盖现有共享配置", JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: legacyStore, isKeyboard: false).genModel, "new-model")
+resetStores()
+legacyStore.set(encodedLegacy, forKey: "jev.config.v1")
+localStore.set(encodedLegacy, forKey: "jev.config.v1")
+_ = JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: legacyStore, isKeyboard: true)
+check("迁移·键盘不能向空共享区写入本地数据", "\(sharedStore.data(forKey: "jev.config.v1") == nil)", "true")
+check("迁移·共享不可用时主 App 保留配置", "\(JevStore.loadConfig(shared: nil, local: localStore, legacy: legacyStore, isKeyboard: false) == legacyConfig)", "true")
+check("迁移·键盘不可误用私有配置", "\(JevStore.loadConfig(shared: nil, local: localStore, legacy: legacyStore, isKeyboard: true) == JevConfig())", "true")
+resetStores()
+sharedStore.set(Data("not-json".utf8), forKey: "jev.config.v1")
+legacyStore.set(encodedLegacy, forKey: "jev.config.v1")
+check("迁移·损坏共享配置可从主 App 恢复", "\(JevStore.loadConfig(shared: sharedStore, local: localStore, legacy: legacyStore, isKeyboard: false) == legacyConfig)", "true")
+resetStores()
+let oldStatusData = Data("{\"lastSeen\":0,\"hasFullAccess\":true}".utf8)
+let oldStatus = try! JSONDecoder().decode(KeyboardStatus.self, from: oldStatusData)
+check("状态·旧版回写不能冒充已读配置", "\(oldStatus.generationConfigured == nil)", "true")
+
+// MARK: 请求取消与同消息重试
+var gate = JevRequestGate()
+let firstRequest = gate.begin()
+let retryRequest = gate.begin()
+check("请求·同消息重试拒绝旧回调", "\(gate.accepts(firstRequest))", "false")
+gate.finish(firstRequest)
+check("请求·迟到完成不结束新请求", "\(gate.accepts(retryRequest))", "true")
+gate.cancel()
+check("请求·取消拒绝部分及最终结果", "\(gate.accepts(retryRequest))", "false")
+let finalRequest = gate.begin()
+gate.finish(finalRequest)
+check("请求·完成后拒绝排队中的部分结果", "\(gate.accepts(finalRequest))", "false")
+
+var replyContext = JevReplyContext()
+check("上下文·默认不附加", "\(replyContext.promptContext == nil)", "true")
+try! replyContext.append("  周五能交付吗？\n", speaker: .other)
+try! replyContext.append("最早下周一", speaker: .me)
+replyContext.scene = "客户"
+check("上下文·顺序角色场景", replyContext.promptContext!, "沟通场景：客户\n对方：周五能交付吗？\n我：最早下周一")
+do { try replyContext.append(" \n ", speaker: .me) } catch {}
+check("上下文·空白不添加", "\(replyContext.turns.count)", "2")
+do { try replyContext.append(String(repeating: "字", count: 2001), speaker: .other) } catch {}
+check("上下文·拒绝超长且不改变原文", "\(replyContext.turns.count)", "2")
+for _ in 0..<3 { try! replyContext.append("后续", speaker: .other) }
+do { try replyContext.append("第六条", speaker: .me) } catch {}
+check("上下文·最多五条", "\(replyContext.turns.count)", "5")
+replyContext.clear()
+check("上下文·清空也重置场景", "\(replyContext.promptContext == nil)", "true")
+for _ in 0..<3 { try! replyContext.append(String(repeating: "字", count: 2000), speaker: .other) }
+do { try replyContext.append("超限", speaker: .me) } catch {}
+check("上下文·合计六千字", "\(replyContext.turns.count)", "3")
+check("插入·清除回车换行", JevReplyText.singleLine("一\r\n二\n三\u{2028}四"), "一 二 三 四")
+check("插入·空行不触发发送", JevReplyText.singleLine("\r\n\n"), "")
+let refinedPrompt = buildRefinementPrompt(message: "周五能交付吗？", context: "客户", candidate: "最早下周一", adjustment: .softer)
+check("微调·保留事实约束", "\(refinedPrompt.contains("不要编造"))", "true")
+check("微调·传入原回复和消息", "\(refinedPrompt.contains("最早下周一") && refinedPrompt.contains("周五能交付吗？"))", "true")
+check("微调·委婉指令", "\(refinedPrompt.contains("语气更礼貌委婉"))", "true")
+check("微调·单条输出", "\(refinedPrompt.contains("只输出修改后的 1 条回复"))", "true")
+
+// MARK: 本机上下文草稿：生命周期、到期及清空
+let draftDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("jev-context-test-" + UUID().uuidString)
+let draftStore = JevContextDraftStore(directory: draftDirectory)
+let draftTime = Date(timeIntervalSince1970: 1_000_000)
+var draftContext = JevReplyContext()
+try! draftContext.append("第一条：周五可以吗？", speaker: .other)
+try! draftStore.save(draftContext, now: draftTime)
+var restoredDraft = JevContextDraftStore(directory: draftDirectory).load(now: draftTime.addingTimeInterval(10))
+check("草稿·新实例恢复第一条", restoredDraft.turns.first?.text ?? "", "第一条：周五可以吗？")
+try! restoredDraft.append("第二条：下周一", speaker: .me)
+try! draftStore.save(restoredDraft, now: draftTime.addingTimeInterval(20))
+check("草稿·连续添加保留前文和角色", draftStore.load(now: draftTime.addingTimeInterval(30)).promptContext ?? "", "沟通场景：通用\n对方：第一条：周五可以吗？\n我：第二条：下周一")
+check("草稿·到期前仍保留", "\(draftStore.load(now: draftTime.addingTimeInterval(1819)).turns.count)", "2")
+check("草稿·从最后编辑计时到期", "\(draftStore.load(now: draftTime.addingTimeInterval(1820)).turns.isEmpty)", "true")
+check("草稿·到期删除文件", "\(FileManager.default.fileExists(atPath: draftStore.fileURL!.path))", "false")
+try! draftStore.save(draftContext, now: draftTime)
+try! draftStore.clear()
+check("草稿·清空后重启不恢复", "\(JevContextDraftStore(directory: draftDirectory).load(now: draftTime).turns.isEmpty)", "true")
+try! Data("broken-json".utf8).write(to: draftStore.fileURL!)
+check("草稿·损坏文件不崩溃", "\(draftStore.load(now: draftTime).turns.isEmpty)", "true")
+check("草稿·损坏文件被清除", "\(FileManager.default.fileExists(atPath: draftStore.fileURL!.path))", "false")
+try! FileManager.default.removeItem(at: draftDirectory)
+
 print("\n\(pass) passed, \(fail) failed")
 exit(fail == 0 ? 0 : 1)

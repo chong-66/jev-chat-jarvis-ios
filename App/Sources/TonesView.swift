@@ -18,14 +18,7 @@ struct TonesView: View {
     }
 
     private var slotOptions: [String] {
-        [NONE_LABEL] + store.toneCatalog.keys.sorted { lhs, rhs in
-            toneOrder(lhs) < toneOrder(rhs)
-        }
-    }
-
-    /// 内置话术按 styles.py 的顺序展示，自定义排后面
-    private func toneOrder(_ name: String) -> Int {
-        BUILTIN_TONE_ORDER.firstIndex(of: name) ?? (BUILTIN_TONE_ORDER.count + 1)
+        [NONE_LABEL] + orderedToneNames(custom: store.config.customTones)
     }
 
     private var slotsSection: some View {
@@ -82,7 +75,7 @@ struct TonesView: View {
 
     private var previewSection: some View {
         Section("内置话术预览") {
-            ForEach(Array(BUILTIN_TONES.keys.enumerated()), id: \.offset) { _, name in
+            ForEach(orderedToneNames(custom: [:]), id: \.self) { name in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(name).font(.subheadline.weight(.medium))
                     Text(BUILTIN_TONES[name] ?? "").font(.caption).foregroundStyle(.secondary)

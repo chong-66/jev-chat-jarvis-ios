@@ -45,12 +45,14 @@
 4. 复制一条无敏感信息的测试消息，在键盘中点“分析剪贴板”，确认能生成并插入候选文本。
 
 如果主 App 正常，但键盘提示未配置、读不到你改过的话术或完全没有键盘入口，就还没有安装成功：先检查是否保留了扩展，然后检查签名后的 App Groups。
-本项目代码固定使用 `group.com.jevchat.jarvis.ios`。重签工具如果更改或移除共享组权限，两个组件与代码中的标识必须同步处理；不要通过删除 App Groups 来假装修复。仅凭 App 内共享容器状态的绿灯也不能证明两个进程实际共享成功。
+本项目保留原始共享组 `group.com.jevchat.jarvis.ios`，并适配 iLoader 2.3.4 使用的 `group.<重签后的主 App bundle ID>`。App 和键盘必须使用同一个 Team、获准访问同一个组，代码也必须读取该组。程序只选择系统确认有权访问的容器，不把普通 UserDefaults 读写成功当成共享成功。
+覆盖升级后先打开主 App，让旧配置迁移到新的共享组，再去聊天里唤起键盘。主 App 的“开始”页收到键盘回写且确认键盘读到生成层配置后才显示共享成功；未收到状态时显示“无法判断”，不会误报完全访问未开启。原配置若未能迁移，可在“模型”页重新填写，无需卸载 App。
 若免费签名工具不能为此项目提供可用的共享组，需进一步适配重签后的标识或改用作者的 TestFlight，不能保证原样 IPA 可用。
 
 ## 官方参考
 
 - [GitHub 托管构建环境与公开仓库免费额度](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 - [Sideloadly 下载及安装说明](https://sideloadly.io/)
+- [iLoader 2.3.4 所用签名库的共享组规则](https://github.com/nab138/isideload/blob/37a1c64112c680f2f272a77bc7605fd13fdab9dd/isideload/src/sideload/sideloader.rs)
 - [苹果普通开发账号与 7 天有效期](https://developer.apple.com/help/account/basics/about-your-developer-account)
 - [苹果开发者模式说明](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device)

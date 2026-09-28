@@ -2,6 +2,7 @@ name: Build iPhone IPA
 
 on:
   workflow_dispatch:
+  pull_request:
 
 permissions:
   contents: read
@@ -46,6 +47,19 @@ jobs:
           xcodegen generate
           swiftc -o "$RUNNER_TEMP/jevcheck" tools/PromptCheck/main.swift Shared/*.swift
           "$RUNNER_TEMP/jevcheck"
+          swiftc -parse-as-library -o "$RUNNER_TEMP/jevasynccheck" tools/AsyncCheck/main.swift Shared/*.swift
+          "$RUNNER_TEMP/jevasynccheck"
+
+      - name: Check keyboard category and pagination layout in simulator
+        run: |
+          xcodegen generate --spec tools/KeyboardLayoutCheck/project.yml --project tools/KeyboardLayoutCheck
+          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for k,v in d["devices"].items() if "iOS" in k for x in v if "iPhone" in x["name"]))')
+          xcodebuild test \
+            -project tools/KeyboardLayoutCheck/KeyboardLayoutCheck.xcodeproj \
+            -scheme KeyboardLayoutCheck \
+            -destination "platform=iOS Simulator,id=$device_id" \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Build app and keyboard without Apple signing
         run: |

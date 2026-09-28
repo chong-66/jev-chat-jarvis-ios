@@ -7,6 +7,9 @@ struct PlaygroundView: View {
     @State private var running = false
     @State private var stage = ""
     @State private var analysis: Analysis?
+    @State private var context = ""
+    @State private var generationTask: Task<Void, Never>?
+    @State private var requestGate = JevRequestGate()
 
     var body: some View {
         NavigationStack {
@@ -15,6 +18,7 @@ struct PlaygroundView: View {
                     TextEditor(text: $message)
                         .frame(minHeight: 70)
                         .font(.subheadline)
+                        .disabled(running)
                     Button {
                         run()
                     } label: {
@@ -25,10 +29,23 @@ struct PlaygroundView: View {
                         }
                     }
                     .disabled(running || message.trimmingCharacters(in: .whitespaces).isEmpty)
+                    if running {
+                        Button("停止生成", role: .cancel) { cancel() }
+                    }
                 } header: {
                     Text("要回的消息")
                 } footer: {
-                    Text("和键盘走同一条链路：判断 → 每话术起草 → 排序。这里能通，键盘上就能通。")
+                    Text("这里验证主 App 的模型连接。聊天键盘还需要完全访问和共享配置，请到「开始」页确认键盘回写状态。")
+                }
+
+                Section("上下文（可选，仅供本页测试）") {
+                    TextEditor(text: $context)
+                        .frame(minHeight: 70)
+                        .font(.subheadline)
+                        .disabled(running)
+                    Text("可按“我：… / 对方：…”补充最近对话，最多 6000 字。运行时会一起发给模型。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("清空上下文") { context = "" }.disabled(running)
                 }
 
                 if let a = analysis {
@@ -37,16 +54,32 @@ struct PlaygroundView: View {
             }
             .navigationTitle("试一试")
         }
+        .onDisappear { cancel() }
+    }
+
+    private func cancel() {
+        requestGate.cancel()
+        generationTask?.cancel()
+        generationTask = nil
+        running = false
     }
 
     private func run() {
+        cancel()
+        guard context.count <= 6000 else {
+            analysis = Analysis(message: message, fatalError: "上下文最多 6000 字，请缩短后重试")
+            return
+        }
+        let id = requestGate.begin()
         running = true
         analysis = nil
         let pipeline = JevPipeline(cfg: store.config)
         let msg = message
-        Task {
-            let result = await pipeline.analyze(message: msg, context: nil) { s in
+        let ctx = context.trimmingCharacters(in: .whitespacesAndNewlines)
+        generationTask = Task { @MainActor in
+            let result = await pipeline.analyze(message: msg, context: ctx.isEmpty ? nil : ctx) { s in
                 Task { @MainActor in
+                    guard requestGate.accepts(id) else { return }
                     switch s {
                     case .judging: stage = "判断中…"
                     case .drafting(let d, let t): stage = "生成中 \(d)/\(t)…"
@@ -55,10 +88,11 @@ struct PlaygroundView: View {
                     }
                 }
             }
-            await MainActor.run {
-                analysis = result
-                running = false
-            }
+            guard requestGate.accepts(id), !Task.isCancelled else { return }
+            requestGate.finish(id)
+            analysis = result
+            running = false
+            generationTask = nil
         }
     }
 }

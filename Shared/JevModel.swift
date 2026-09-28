@@ -23,7 +23,7 @@ enum APIKind: String, Codable, CaseIterable, Identifiable {
 /// 所以这里放的必须是**专用 token**（模型白名单 + 额度封顶 + 过期时间），而不是主账号 key。
 /// 把 apiKey 留空 = 退回老行为：必须自己配，否则候选区只显示「还没配置生成层」。
 enum JevBuiltin {
-    static let apiKey = "sk-WwZDJLxyZSiLESeLjVTySpCiwjcNoJauuGVkWPNEpI2NyDbQ"
+    static let apiKey = ""
     /// 自建中转（One API / New API）
     static let baseURL = "http://101.132.131.220:11111/v1"
     static let model = "glm-4-flash"
@@ -151,6 +151,9 @@ struct JevConfig: Codable, Equatable {
 struct KeyboardStatus: Codable, Equatable {
     var lastSeen: Date
     var hasFullAccess: Bool
+    var generationConfigured: Bool? = nil
+    var keyboardVersion: String? = nil
+    var presetCount: Int? = nil
 }
 
 // MARK: - App Group 存储
@@ -158,45 +161,69 @@ struct KeyboardStatus: Codable, Equatable {
 /// 配置与状态的唯一存放点。键值放 App Group UserDefaults：
 /// 键盘扩展只有拿到「允许完全访问」后才能读共享容器，正好与联网条件一致。
 enum JevStore {
-    static let appGroupID = "group.com.jevchat.jarvis.ios"
+    static let appGroupID = JevSharedGroup.originalID
     private static let configKey = "jev.config.v1"
     private static let statusKey = "jev.kbstatus.v1"
-    private static let canaryKey = "jev.canary.v1"
+
+    private static var isKeyboard: Bool { Bundle.main.bundleURL.pathExtension == "appex" }
+
+    static var resolvedAppGroupID: String? {
+        JevSharedGroup.resolve(
+            JevSharedGroup.candidates(bundleID: Bundle.main.bundleIdentifier, isKeyboard: isKeyboard)
+        ) { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) != nil }
+    }
+
+    private static var sharedDefaults: UserDefaults? {
+        guard let id = resolvedAppGroupID else { return nil }
+        return UserDefaults(suiteName: id)
+    }
 
     static var defaults: UserDefaults {
-        UserDefaults(suiteName: appGroupID) ?? .standard
+        sharedDefaults ?? .standard
     }
 
-    /// App Group 容器是否真的可写可读（签名没带上 entitlement 时 suite 会静默退化为私有容器）。
-    static var groupWritable: Bool {
-        let stamp = "t\(Date().timeIntervalSince1970)"
-        defaults.set(stamp, forKey: canaryKey)
-        return defaults.string(forKey: canaryKey) == stamp
-    }
+    /// 容器可用只证明当前进程有权限；跨进程共享还需收到键盘回写。
+    static var groupWritable: Bool { sharedDefaults != nil }
 
     static func loadConfig() -> JevConfig {
-        guard let data = defaults.data(forKey: configKey),
-              let cfg = try? JSONDecoder().decode(JevConfig.self, from: data) else {
-            return JevConfig()
+        loadConfig(shared: sharedDefaults, local: .standard,
+                   legacy: isKeyboard ? nil : UserDefaults(suiteName: appGroupID),
+                   isKeyboard: isKeyboard)
+    }
+
+    /// Only the host migrates old private preferences. The keyboard must never
+    /// seed the shared store with its own empty/default configuration.
+    static func loadConfig(shared: UserDefaults?, local: UserDefaults,
+                           legacy: UserDefaults?, isKeyboard: Bool) -> JevConfig {
+        func decode(_ source: UserDefaults?) -> JevConfig? {
+            guard let data = source?.data(forKey: configKey) else { return nil }
+            return try? JSONDecoder().decode(JevConfig.self, from: data)
+        }
+        if let cfg = decode(shared) { return cfg }
+        guard !isKeyboard, let cfg = decode(local) ?? decode(legacy) else { return JevConfig() }
+        if let data = try? JSONEncoder().encode(cfg) {
+            shared?.set(data, forKey: configKey)
+            local.set(data, forKey: configKey)
         }
         return cfg
     }
 
     static func saveConfig(_ cfg: JevConfig) {
         if let data = try? JSONEncoder().encode(cfg) {
-            defaults.set(data, forKey: configKey)
+            sharedDefaults?.set(data, forKey: configKey)
+            if !isKeyboard { UserDefaults.standard.set(data, forKey: configKey) }
         }
     }
 
     static func loadKeyboardStatus() -> KeyboardStatus? {
-        guard let data = defaults.data(forKey: statusKey),
+        guard let data = sharedDefaults?.data(forKey: statusKey),
               let s = try? JSONDecoder().decode(KeyboardStatus.self, from: data) else { return nil }
         return s
     }
 
     static func saveKeyboardStatus(_ s: KeyboardStatus) {
         if let data = try? JSONEncoder().encode(s) {
-            defaults.set(data, forKey: statusKey)
+            sharedDefaults?.set(data, forKey: statusKey)
         }
     }
 
@@ -218,4 +245,117 @@ enum JevStore {
         defaults.set(String((prev + "[\(stamp)] \(line)\n").suffix(6000)), forKey: diagKey)
     }
 #endif
+}
+
+
+// Request identities must change even when the same message is regenerated.
+// UI owners use this on the main actor before accepting every async callback.
+struct JevRequestGate {
+    private(set) var currentID: UUID?
+    mutating func begin() -> UUID {
+        let id = UUID()
+        currentID = id
+        return id
+    }
+    func accepts(_ id: UUID) -> Bool { currentID == id }
+    mutating func cancel() { currentID = nil }
+    mutating func finish(_ id: UUID) {
+        if accepts(id) { currentID = nil }
+    }
+}
+
+/// Explicitly collected context, stored only in a short-lived local draft.
+struct JevReplyContext: Codable {
+    enum Speaker: String, CaseIterable, Codable { case other = "对方", me = "我" }
+    static let scenes = ["通用", "同事", "客户", "朋友"]
+    var scene = "通用"
+    struct Turn: Codable { var speaker: Speaker; var text: String }
+    private(set) var turns: [Turn] = []
+    mutating func append(_ raw: String, speaker: Speaker) throws {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw JevError.config("剪贴板没有文字") }
+        guard turns.count < 5 else { throw JevError.config("最多 5 条，请先清空再添加") }
+        guard text.count <= 2000, turns.reduce(0, { $0 + $1.text.count }) + text.count <= 6000 else {
+            throw JevError.config("单条最多 2000 字，上下文合计最多 6000 字")
+        }
+        turns.append(Turn(speaker: speaker, text: text))
+    }
+    mutating func clear() { self = JevReplyContext() }
+    var promptContext: String? {
+        guard scene != "通用" || !turns.isEmpty else { return nil }
+        return (["沟通场景：" + scene] + turns.map { "\($0.speaker.rawValue)：\($0.text)" }).joined(separator: "\n")
+    }
+}
+
+/// Local cache survives extension recreation; it never enters shared configuration
+/// or logs. Expired/corrupt drafts are removed on the next access. Caches are not
+/// backed up; iOS file protection additionally protects content while locked.
+struct JevContextDraftStore {
+    static let lifetime: TimeInterval = 30 * 60
+    let fileURL: URL?
+    init(directory: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first) {
+        fileURL = directory?.appendingPathComponent("jev-context-draft-v1.json")
+    }
+    private struct Draft: Codable {
+        var context: JevReplyContext
+        var savedAt: Date
+    }
+    func load(now: Date = Date()) -> JevReplyContext {
+        guard let fileURL else { return JevReplyContext() }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            guard data.count <= 100_000 else { try clear(); return JevReplyContext() }
+            let draft = try JSONDecoder().decode(Draft.self, from: data)
+            let age = now.timeIntervalSince(draft.savedAt)
+            guard age >= 0, age < Self.lifetime,
+                  JevReplyContext.scenes.contains(draft.context.scene) else {
+                try clear(); return JevReplyContext()
+            }
+            // Validate limits on restoration too; do not trust a persisted file.
+            var restored = JevReplyContext()
+            restored.scene = draft.context.scene
+            for turn in draft.context.turns { try restored.append(turn.text, speaker: turn.speaker) }
+            return restored
+        } catch {
+            // File protection can temporarily make the cache inaccessible while
+            // locked; do not erase it on an I/O error.
+            if error is DecodingError || error is JevError { try? clear() }
+            return JevReplyContext()
+        }
+    }
+    func save(_ context: JevReplyContext, now: Date = Date()) throws {
+        guard context.promptContext != nil else { try clear(); return }
+        guard let fileURL else { throw JevError.config("无法访问上下文临时目录") }
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(Draft(context: context, savedAt: now))
+        var options: Data.WritingOptions = [.atomic]
+        #if os(iOS)
+        options.insert(.completeFileProtection)
+        #endif
+        try data.write(to: fileURL, options: options)
+    }
+    func clear() throws {
+        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        try FileManager.default.removeItem(at: fileURL)
+    }
+}
+
+enum JevReplyAdjustment: String, CaseIterable {
+    case shorter = "更简短", softer = "更委婉", firmer = "更坚定"
+    var instruction: String {
+        switch self {
+        case .shorter: return "删去赘述，压缩长度，保留关键事实与原意。"
+        case .softer: return "语气更礼貌委婉，但不要改变立场或新增承诺。"
+        case .firmer: return "表达更明确坚定，但不要攻击、威胁或新增承诺。"
+        }
+    }
+}
+
+enum JevReplyText {
+    /// A candidate must never trigger a host's return-to-send behavior.
+    static func singleLine(_ text: String) -> String {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }.joined(separator: " ")
+    }
 }
