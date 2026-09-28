@@ -118,7 +118,10 @@ final class KeyboardViewController: UIInputViewController {
     /// Hosts may reuse the same input view for multiple chats, so the context
     /// panel also explicitly asks users to clear context when switching people.
     private func synchronizeDocument() {
-        let current = textDocumentProxy.documentIdentifier
+        synchronizeDocument(with: textDocumentProxy.documentIdentifier)
+    }
+
+    private func synchronizeDocument(with current: UUID) {
         guard current != documentID else { return }
         cancelRequest()
         documentID = current
@@ -356,6 +359,8 @@ final class KeyboardViewController: UIInputViewController {
     /// 靠它才能在模拟器上按不同机型尺寸看布局（见 /tmp 的 PanelPreview 壳）。
     func previewContextStore(_ store: JevContextDraftStore) { contextDraftStore = store }
     func previewAppendContext(_ text: String) { appendContextText(text) }
+    func previewDocumentChange(_ id: UUID) { synchronizeDocument(with: id) }
+    var previewContextTurnCount: Int { replyContext.turns.count }
 
     func previewPanel(_ kind: String, analysis: Analysis? = nil, errorText: String = "") {
         self.analysis = analysis

@@ -25,8 +25,10 @@ import UIKit
         let first = makeController()
         first.previewAppendContext("第一条对话")
         XCTAssertTrue(previewText(first).contains("第一条对话"))
-        first.viewWillDisappear(false)
-        first.textDidChange(nil)
+        // Exercise production document-change handling with a supplied ID;
+        // this isolated host has no system keyboard input-service connection.
+        first.previewDocumentChange(UUID())
+        XCTAssertEqual(first.previewContextTurnCount, 1)
         first.previewPanel("context")
         XCTAssertTrue(previewText(first).contains("第一条对话"))
         first.previewAppendContext("第二条对话")
